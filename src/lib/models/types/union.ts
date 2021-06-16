@@ -1,4 +1,6 @@
-import { Type } from './abstract';
+import { Type } from "./abstract";
+import { IntrinsicType } from "./intrinsic";
+import { LiteralType } from "./literal";
 
 /**
  * Represents an union type.
@@ -16,7 +18,7 @@ export class UnionType extends Type {
     /**
      * The type name identifier.
      */
-    readonly type: string = 'union';
+    readonly type: string = "union";
 
     /**
      * Create a new TupleType instance.
@@ -26,6 +28,7 @@ export class UnionType extends Type {
     constructor(types: Type[]) {
         super();
         this.types = types;
+        this.normalize();
     }
 
     /**
@@ -51,20 +54,6 @@ export class UnionType extends Type {
     }
 
     /**
-     * Return a raw object representation of this type.
-     * @deprecated Use serializers instead
-     */
-    toObject(): any {
-        const result: any = super.toObject();
-
-        if (this.types && this.types.length) {
-            result.types = this.types.map((e) => e.toObject());
-        }
-
-        return result;
-    }
-
-    /**
      * Return a string representation of this type.
      */
     toString() {
@@ -73,6 +62,24 @@ export class UnionType extends Type {
             names.push(element.toString());
         });
 
-        return names.join(' | ');
+        return names.join(" | ");
+    }
+
+    private normalize() {
+        const trueIndex = this.types.findIndex((t) =>
+            t.equals(new LiteralType(true))
+        );
+        const falseIndex = this.types.findIndex((t) =>
+            t.equals(new LiteralType(false))
+        );
+
+        if (trueIndex !== -1 && falseIndex !== -1) {
+            this.types.splice(Math.max(trueIndex, falseIndex), 1);
+            this.types.splice(
+                Math.min(trueIndex, falseIndex),
+                1,
+                new IntrinsicType("boolean")
+            );
+        }
     }
 }

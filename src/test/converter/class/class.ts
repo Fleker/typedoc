@@ -6,7 +6,6 @@
  * @see [[TestClass]] @ fixtures
  */
 export class TestClass {
-
     /**
      * publicProperty short text.
      */
@@ -18,27 +17,33 @@ export class TestClass {
     private privateProperty: number[];
 
     /**
-     * privateProperty short text.
+     * staticProperty short text.
      */
     static staticProperty: TestClass;
 
     /**
      * Constructor short text.
      */
-    constructor() { }
+    constructor() {}
 
     /**
      * publicMethod short text.
+     * @category AnotherTest
+     * @category Test
      */
     public publicMethod() {}
 
     /**
      * protectedMethod short text.
+     * @category Test
+     * @category AnotherTest
      */
     protected protectedMethod() {}
 
     /**
      * privateMethod short text.
+     *
+     * @category AnotherTest
      */
     private privateMethod() {}
 
@@ -46,6 +51,11 @@ export class TestClass {
      * staticMethod short text.
      */
     static staticMethod() {}
+
+    /**
+     * arrow method
+     */
+    arrowMethod = () => {};
 }
 
 export class TestSubClass extends TestClass {
@@ -81,7 +91,7 @@ export abstract class TestAbstractClass {
 export class TestAbstractClassImplementation extends TestAbstractClass {
     myAbstractProperty: string;
 
-    protected myAbstractMethod(): void { }
+    protected myAbstractMethod(): void {}
 }
 
 export interface TestSubClass {
@@ -95,17 +105,26 @@ export module TestSubClass {
     /**
      * staticMergedMethod short text.
      */
-    export function staticMergedMethod() { }
+    export function staticMergedMethod() {}
 }
 
-/**
- * This class will not appear when `excludeNotExported=true`
- */
-abstract class NotExportedClass {
-    /**
-     * Adds two numbers
-     */
-    add(a: number, b: number) {
-        a + b;
-    }
+const x = "literal";
+
+export class ComputedNames {
+    [Symbol.toStringTag] = "computed";
+    [x] = true;
+    ["literal2"] = true;
+    y = false;
 }
+
+export class Ts38PrivateFields {
+    /** Docs */
+    #foo = 1;
+}
+
+export abstract class Abstract {
+    abstract needsImpl(): number
+}
+
+// TS 4.2
+export type AbstractMe = abstract new () => Abstract

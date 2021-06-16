@@ -1,27 +1,26 @@
-import { Component } from '../../../utils/component';
-import { ParameterReflection } from '../../../models';
+import { ParameterReflection } from "../../../models";
 
-import { ReflectionSerializerComponent } from '../../components';
+import { ReflectionSerializerComponent } from "../../components";
+import {
+    ParameterReflection as JSONParameterReflection,
+    Reflection as JSONReflection,
+} from "../../schema";
 
-@Component({name: 'serializer:parameter-reflection'})
 export class ParameterReflectionSerializer extends ReflectionSerializerComponent<ParameterReflection> {
-
-  supports(t: unknown) {
-    return t instanceof ParameterReflection;
-  }
-
-  toObject(parameter: ParameterReflection, obj?: any): any {
-    obj = obj || {};
-
-    if (parameter.type) {
-      obj.type = this.owner.toObject(parameter.type);
+    supports(t: unknown) {
+        return t instanceof ParameterReflection;
     }
 
-    if (parameter.defaultValue) {
-      obj.defaultValue = parameter.defaultValue;
+    toObject(
+        parameter: ParameterReflection,
+        obj: JSONReflection
+    ): JSONParameterReflection {
+        const result: JSONParameterReflection = {
+            ...obj,
+            type: this.owner.toObject(parameter.type),
+            defaultValue: this.owner.toObject(parameter.defaultValue),
+        };
+
+        return result;
     }
-
-    return obj;
-  }
-
 }

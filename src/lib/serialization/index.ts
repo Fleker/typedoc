@@ -1,40 +1,37 @@
 export {
-  ReflectionSerializerComponent,
-  SerializerComponent,
-  TypeSerializerComponent
-} from './components';
-
-export { Serializer } from './serializer';
-
+    ReflectionSerializerComponent,
+    SerializerComponent,
+    TypeSerializerComponent,
+} from "./components";
+export { SerializeEvent } from "./events";
+export { Serializer } from "./serializer";
 export {
-  SourceReferenceContainerSerializer,
-  SourceReferenceWrapper,
-  DecoratorContainerSerializer,
-  DecoratorWrapper,
-  ContainerReflectionSerializer,
-  CommentTagSerializer,
-  CommentSerializer,
-  ArrayTypeSerializer,
-  DeclarationReflectionSerializer,
-  IntersectionTypeSerializer,
-  IntersectionUnion,
-  IntrinsicTypeSerializer,
-  ParameterReflectionSerializer,
-  ProjectReflectionSerializer,
-  ReferenceTypeSerializer,
-  ReflectionGroupSerializer,
-  ReflectionSerializer,
-  ReflectionTypeSerializer,
-  SignatureReflectionSerializer,
-  StringLiteralTypeSerializer,
-  TupleTypeSerializer,
-  TypeSerializer,
-  TypeParameterReflectionSerializer,
-  TypeOperatorTypeSerializer,
-  TypeParameterTypeSerializer,
-  UnknownTypeSerializer
-} from './serializers';
+    ArrayTypeSerializer,
+    CommentSerializer,
+    CommentTagSerializer,
+    ContainerReflectionSerializer,
+    DeclarationReflectionSerializer,
+    DecoratorContainerSerializer,
+    DecoratorWrapper,
+    IntersectionTypeSerializer,
+    IntrinsicTypeSerializer,
+    LiteralTypeSerializer,
+    ParameterReflectionSerializer,
+    ReferenceTypeSerializer,
+    ReflectionCategorySerializer,
+    ReflectionGroupSerializer,
+    ReflectionSerializer,
+    ReflectionTypeSerializer,
+    SignatureReflectionSerializer,
+    SourceReferenceContainerSerializer,
+    SourceReferenceWrapper,
+    TupleTypeSerializer,
+    TypeOperatorTypeSerializer,
+    TypeParameterReflectionSerializer,
+    TypeParameterTypeSerializer,
+    TypeSerializer,
+    UnknownTypeSerializer,
+} from "./serializers";
+export { JSONOutput };
 
-export { SerializeEvent } from './events';
-
-export * from './browser';
+import * as JSONOutput from "./schema";

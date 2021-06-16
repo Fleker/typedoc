@@ -1,8 +1,7 @@
 /**
  * This is a simple Enumeration.
  */
-export enum Directions
-{
+export enum Directions {
     /**
      * A simple enum member.
      */
@@ -31,17 +30,15 @@ export enum Directions
     /**
      * A composite enum member.
      */
-    TopRight = Top | Right
+    TopRight = Top | Right,
 }
-
 
 /**
  * This is a enumeration extended by a module.
  *
  * You should see both the enum members and the module members.
  */
-export enum Size
-{
+export enum Size {
     /**
      * A simple enum member.
      */
@@ -55,20 +52,17 @@ export enum Size
     /**
      * A simple enum member.
      */
-    Large
+    Large,
 }
-
 
 /**
  * This comment is ignored, as the enumeration is already defined.
  */
-export module Size
-{
+export module Size {
     /**
      * A variable that is attached to an enumeration.
      */
-    var defaultSize:Size = Size.Medium;
-
+    export let defaultSize: Size = Size.Medium;
 
     /**
      * A function that is attached to an enumeration.
@@ -76,7 +70,7 @@ export module Size
      * @param value The value that should be tested.
      * @returns TRUE when the given value equals Size.Small.
      */
-    function isSmall(value:Size):boolean {
-        return value == Size.Small;
+    export function isSmall(value: Size): boolean {
+        return value === Size.Small;
     }
 }

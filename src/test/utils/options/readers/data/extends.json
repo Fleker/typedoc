@@ -1,0 +1,4 @@
+{
+    "extends": "./valid.json",
+    "name": "extends"
+}

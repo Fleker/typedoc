@@ -1,8 +1,16 @@
-import { DefaultValueContainer, TypeContainer, TypeParameterContainer, TraverseCallback, TraverseProperty } from './abstract';
-import { Type, ReflectionType } from '../types/index';
-import { ContainerReflection } from './container';
-import { SignatureReflection } from './signature';
-import { TypeParameterReflection } from './type-parameter';
+import { toArray } from "lodash";
+import type * as ts from "typescript";
+import { ReferenceType, ReflectionType, Type } from "../types/index";
+import {
+    DefaultValueContainer,
+    TraverseCallback,
+    TraverseProperty,
+    TypeContainer,
+    TypeParameterContainer,
+} from "./abstract";
+import { ContainerReflection } from "./container";
+import { SignatureReflection } from "./signature";
+import { TypeParameterReflection } from "./type-parameter";
 
 /**
  * Stores hierarchical type data.
@@ -32,7 +40,16 @@ export interface DeclarationHierarchy {
  * All parts of a project are represented by DeclarationReflection instances. The actual
  * kind of a reflection is stored in its ´kind´ member.
  */
-export class DeclarationReflection extends ContainerReflection implements DefaultValueContainer, TypeContainer, TypeParameterContainer {
+export class DeclarationReflection
+    extends ContainerReflection
+    implements DefaultValueContainer, TypeContainer, TypeParameterContainer {
+    /**
+     * The escaped name of this declaration assigned by the TS compiler if there is an associated symbol.
+     * This is used to retrieve properties for analyzing inherited members.
+     * @internal
+     */
+    escapedName?: ts.__String;
+
     /**
      * The type of the reflection.
      *
@@ -78,21 +95,21 @@ export class DeclarationReflection extends ContainerReflection implements Defaul
      *
      * Applies to interface and class members.
      */
-    overwrites?: Type;
+    overwrites?: ReferenceType;
 
     /**
      * A type that points to the reflection this reflection has been inherited from.
      *
      * Applies to interface and class members.
      */
-    inheritedFrom?: Type;
+    inheritedFrom?: ReferenceType;
 
     /**
      * A type that points to the reflection this reflection is the implementation of.
      *
      * Applies to class members.
      */
-    implementationOf?: Type;
+    implementationOf?: ReferenceType;
 
     /**
      * A list of all types this reflection extends (e.g. the parent classes).
@@ -102,7 +119,7 @@ export class DeclarationReflection extends ContainerReflection implements Defaul
     /**
      * A list of all types that extend this reflection (e.g. the subclasses).
      */
-    extendedBy?: Type[];
+    extendedBy?: ReferenceType[];
 
     /**
      * A list of all types this reflection implements.
@@ -112,7 +129,7 @@ export class DeclarationReflection extends ContainerReflection implements Defaul
     /**
      * A list of all types that implement this reflection.
      */
-    implementedBy?: Type[];
+    implementedBy?: ReferenceType[];
 
     /**
      * Contains a simplified representation of the type hierarchy suitable for being
@@ -152,77 +169,59 @@ export class DeclarationReflection extends ContainerReflection implements Defaul
      * @param callback  The callback function that should be applied for each child reflection.
      */
     traverse(callback: TraverseCallback) {
-        if (this.typeParameters) {
-            this.typeParameters.slice().forEach((parameter) => callback(parameter, TraverseProperty.TypeParameter));
+        for (const parameter of toArray(this.typeParameters)) {
+            if (callback(parameter, TraverseProperty.TypeParameter) === false) {
+                return;
+            }
         }
 
         if (this.type instanceof ReflectionType) {
-            callback(this.type.declaration, TraverseProperty.TypeLiteral);
+            if (
+                callback(
+                    this.type.declaration,
+                    TraverseProperty.TypeLiteral
+                ) === false
+            ) {
+                return;
+            }
         }
 
-        if (this.signatures) {
-            this.signatures.slice().forEach((signature) => callback(signature, TraverseProperty.Signatures));
+        for (const signature of toArray(this.signatures)) {
+            if (callback(signature, TraverseProperty.Signatures) === false) {
+                return;
+            }
         }
 
         if (this.indexSignature) {
-            callback(this.indexSignature, TraverseProperty.IndexSignature);
+            if (
+                callback(
+                    this.indexSignature,
+                    TraverseProperty.IndexSignature
+                ) === false
+            ) {
+                return;
+            }
         }
 
         if (this.getSignature) {
-            callback(this.getSignature, TraverseProperty.GetSignature);
+            if (
+                callback(this.getSignature, TraverseProperty.GetSignature) ===
+                false
+            ) {
+                return;
+            }
         }
 
         if (this.setSignature) {
-            callback(this.setSignature, TraverseProperty.SetSignature);
+            if (
+                callback(this.setSignature, TraverseProperty.SetSignature) ===
+                false
+            ) {
+                return;
+            }
         }
 
         super.traverse(callback);
-    }
-
-    /**
-     * Return a raw object representation of this reflection.
-     * @deprecated Use serializers instead
-     */
-    toObject(): any {
-        let result = super.toObject();
-
-        if (this.type) {
-            result.type = this.type.toObject();
-        }
-
-        if (this.defaultValue) {
-            result.defaultValue = this.defaultValue;
-        }
-
-        if (this.overwrites) {
-            result.overwrites = this.overwrites.toObject();
-        }
-
-        if (this.inheritedFrom) {
-            result.inheritedFrom = this.inheritedFrom.toObject();
-        }
-
-        if (this.extendedTypes) {
-            result.extendedTypes = this.extendedTypes.map((t) => t.toObject());
-        }
-
-        if (this.extendedBy) {
-            result.extendedBy = this.extendedBy.map((t) => t.toObject());
-        }
-
-        if (this.implementedTypes) {
-            result.implementedTypes = this.implementedTypes.map((t) => t.toObject());
-        }
-
-        if (this.implementedBy) {
-            result.implementedBy = this.implementedBy.map((t) => t.toObject());
-        }
-
-        if (this.implementationOf) {
-            result.implementationOf = this.implementationOf.toObject();
-        }
-
-        return result;
     }
 
     /**
@@ -236,11 +235,11 @@ export class DeclarationReflection extends ContainerReflection implements Defaul
             this.typeParameters.forEach((parameter) => {
                 parameters.push(parameter.name);
             });
-            result += '<' + parameters.join(', ') + '>';
+            result += "<" + parameters.join(", ") + ">";
         }
 
         if (this.type) {
-            result += ':' + this.type.toString();
+            result += ":" + this.type.toString();
         }
 
         return result;

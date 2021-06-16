@@ -4,12 +4,12 @@
  * @param text  The string that should be compressed.
  * @returns The string with all newlines stripped.
  */
-export function compact(options: any): string {
-    const lines = options.fn(this).split('\n');
-
-    for (let i = 0, c = lines.length; i < c; i++) {
-        lines[i] = lines[i].trim().replace(/&nbsp;/, ' ');
-    }
-
-    return lines.join('');
+export function compact(this: any, options: any): string {
+    return options
+        .fn(this)
+        .split("\n")
+        .map((line: string) => line.trim())
+        .join("")
+        .replace(/&nbsp;/g, " ")
+        .trim();
 }

@@ -1,4 +1,4 @@
-import { Type } from './abstract';
+import { Type } from "./abstract";
 
 /**
  * Represents an intrinsic type like `string` or `boolean`.
@@ -16,7 +16,7 @@ export class IntrinsicType extends Type {
     /**
      * The type name identifier.
      */
-    readonly type: string = 'intrinsic';
+    readonly type = "intrinsic";
 
     /**
      * Create a new instance of IntrinsicType.
@@ -44,18 +44,7 @@ export class IntrinsicType extends Type {
      * @returns TRUE if the given type equals this type, FALSE otherwise.
      */
     equals(type: IntrinsicType): boolean {
-        return type instanceof IntrinsicType &&
-            type.name === this.name;
-    }
-
-    /**
-     * Return a raw object representation of this type.
-     * @deprecated Use serializers instead
-     */
-    toObject(): any {
-        const result: any = super.toObject();
-        result.name = this.name;
-        return result;
+        return type instanceof IntrinsicType && type.name === this.name;
     }
 
     /**

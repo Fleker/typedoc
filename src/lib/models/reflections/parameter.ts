@@ -1,8 +1,16 @@
-import { Type, ReflectionType } from '../types/index';
-import { Reflection, DefaultValueContainer, TypeContainer, TraverseCallback, TraverseProperty } from './abstract';
-import { SignatureReflection } from './signature';
+import { Type, ReflectionType } from "../types/index";
+import {
+    Reflection,
+    DefaultValueContainer,
+    TypeContainer,
+    TraverseCallback,
+    TraverseProperty,
+} from "./abstract";
+import { SignatureReflection } from "./signature";
 
-export class ParameterReflection extends Reflection implements DefaultValueContainer, TypeContainer {
+export class ParameterReflection
+    extends Reflection
+    implements DefaultValueContainer, TypeContainer {
     parent?: SignatureReflection;
 
     defaultValue?: string;
@@ -19,34 +27,23 @@ export class ParameterReflection extends Reflection implements DefaultValueConta
      */
     traverse(callback: TraverseCallback) {
         if (this.type instanceof ReflectionType) {
-            callback(this.type.declaration, TraverseProperty.TypeLiteral);
+            if (
+                callback(
+                    this.type.declaration,
+                    TraverseProperty.TypeLiteral
+                ) === false
+            ) {
+                return;
+            }
         }
 
         super.traverse(callback);
     }
 
     /**
-     * Return a raw object representation of this reflection.
-     * @deprecated Use serializers instead
-     */
-    toObject(): any {
-        const result = super.toObject();
-
-        if (this.type) {
-            result.type = this.type.toObject();
-        }
-
-        if (this.defaultValue) {
-            result.defaultValue = this.defaultValue;
-        }
-
-        return result;
-    }
-
-    /**
      * Return a string representation of this reflection.
      */
     toString() {
-        return super.toString() + (this.type ? ':' + this.type.toString() :  '');
+        return super.toString() + (this.type ? ":" + this.type.toString() : "");
     }
 }

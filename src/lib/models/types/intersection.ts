@@ -1,4 +1,4 @@
-import { Type } from './abstract';
+import { Type } from "./abstract";
 
 /**
  * Represents an intersection type.
@@ -16,7 +16,7 @@ export class IntersectionType extends Type {
     /**
      * The type name identifier.
      */
-    readonly type: string = 'intersection';
+    readonly type: string = "intersection";
 
     /**
      * Create a new TupleType instance.
@@ -51,20 +51,6 @@ export class IntersectionType extends Type {
     }
 
     /**
-     * Return a raw object representation of this type.
-     * @deprecated Use serializers instead
-     */
-    toObject(): any {
-        const result: any = super.toObject();
-
-        if (this.types && this.types.length) {
-            result.types = this.types.map((e) => e.toObject());
-        }
-
-        return result;
-    }
-
-    /**
      * Return a string representation of this type.
      */
     toString() {
@@ -73,6 +59,6 @@ export class IntersectionType extends Type {
             names.push(element.toString());
         });
 
-        return names.join(' & ');
+        return names.join(" & ");
     }
 }

@@ -1,9 +1,8 @@
-import * as Path from 'path';
+import * as Path from "path";
 
-import { Reflection } from '../reflections/abstract';
-import { ReflectionCategory } from '../ReflectionCategory';
-import { ReflectionGroup } from '../ReflectionGroup';
-import { SourceDirectory } from './directory';
+import { Reflection } from "../reflections/abstract";
+import { ReflectionGroup } from "../ReflectionGroup";
+import { SourceDirectory } from "./directory";
 
 /**
  * Represents references of reflections to their defining source files.
@@ -82,18 +81,13 @@ export class SourceFile {
     groups?: ReflectionGroup[];
 
     /**
-     * A categorized list of the reflections declared in this file.
-     */
-    categories?: ReflectionCategory[];
-
-    /**
      * Create a new SourceFile instance.
      *
      * @param fullFileName  The full file name.
      */
     constructor(fullFileName: string) {
-        this.fileName     = fullFileName;
+        this.fileName = fullFileName;
         this.fullFileName = fullFileName;
-        this.name         = Path.basename(fullFileName);
+        this.name = Path.basename(fullFileName);
     }
 }

@@ -4,17 +4,21 @@
 .baseDir.js
 .baseDir.ts
 yarn.lock
+.nyc_output
 yarn-error.log
 
-/src/typings/typescript/typescript.js
-
-/tmp/
-/etc/
 /examples/*/doc
-/examples/definitely-typed/src/
-/examples/plottable/src/
-/examples/doppio/src/
+/examples/basic/json.json
 /node_modules/
-/typescript/
 /coverage/
 /dist/
+
+typedoc*.tgz
+tmp
+
+src/test/renderer/specs/assets/*
+src/test/renderer/specs/specs.json
+
+# This is maintained in the typedoc-site repo, but might be created here
+# if someone is experimenting with the generate_changelog script.
+CHANGELOG.md

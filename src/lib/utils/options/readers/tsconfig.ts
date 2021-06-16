@@ -1,99 +1,96 @@
-import * as Path from 'path';
-import * as FS from 'fs';
-import * as _ from 'lodash';
-import * as ts from 'typescript';
+import { resolve, basename } from "path";
+import { existsSync, statSync } from "fs";
 
-import { Component, Option } from '../../component';
-import { OptionsComponent, OptionsReadMode, DiscoverEvent } from '../options';
-import { ParameterType, ParameterHint } from '../declaration';
-import { TypeScriptSource } from '../sources/typescript';
+import * as ts from "typescript";
 
-@Component({name: 'options:tsconfig'})
-export class TSConfigReader extends OptionsComponent {
-    @Option({
-        name: TSConfigReader.OPTIONS_KEY,
-        help: 'Specify a typescript config file that should be loaded. If not specified TypeDoc will look for \'tsconfig.json\' in the current directory.',
-        type: ParameterType.String,
-        hint: ParameterHint.File
-    })
-    options!: string;
+import { OptionsReader, Options } from "../options";
+import { Logger } from "../../loggers";
+import { normalizePath } from "../../fs";
 
+function isFile(file: string) {
+    return existsSync(file) && statSync(file).isFile();
+}
+
+export class TSConfigReader implements OptionsReader {
     /**
-     * The name of the parameter that specifies the tsconfig file.
+     * Note: Runs after the [[TypeDocReader]].
      */
-    private static OPTIONS_KEY = 'tsconfig';
+    priority = 200;
 
-    /**
-     * The name of the parameter that specifies the TS project
-     *
-     * https://github.com/Microsoft/TypeScript/blob/master/src/compiler/commandLineParser.ts#L49
-     */
-    private static PROJECT_KEY = 'project';
+    name = "tsconfig-json";
 
-    initialize() {
-        this.listenTo(this.owner, DiscoverEvent.DISCOVER, this.onDiscover, -100);
-    }
+    read(container: Options, logger: Logger): void {
+        const file = container.getValue("tsconfig");
 
-    onDiscover(event: DiscoverEvent) {
-        // Do nothing until were fetching options
-        if (event.mode !== OptionsReadMode.Fetch) {
-            return;
+        let fileToRead: string | undefined = file;
+        if (!isFile(fileToRead)) {
+            fileToRead = ts.findConfigFile(
+                file,
+                isFile,
+                file.toLowerCase().endsWith(".json")
+                    ? basename(file)
+                    : undefined
+            );
         }
 
-        if (TSConfigReader.OPTIONS_KEY in event.data) {
-            this.load(event, Path.resolve(event.data[TSConfigReader.OPTIONS_KEY]));
-        } else if (TSConfigReader.PROJECT_KEY in event.data) {
-            // The `project` option may be a directory or file, so use TS to find it
-            const file = ts.findConfigFile(event.data[TSConfigReader.PROJECT_KEY], ts.sys.fileExists);
-            // If file is undefined, we found no file to load.
-            if (file) {
-                this.load(event, file);
+        if (!fileToRead || !isFile(fileToRead)) {
+            // If the user didn't give us this option, we shouldn't complain about not being able to find it.
+            if (container.isSet("tsconfig")) {
+                logger.error(`The tsconfig file ${file} does not exist`);
             }
-        } else if (this.application.isCLI) {
-            const file = ts.findConfigFile('.', ts.sys.fileExists);
-            // If file is undefined, we found no file to load.
-            if (file) {
-                this.load(event, file);
-            }
-        }
-    }
-
-    /**
-     * Load the specified tsconfig file.
-     *
-     * @param event  The event that triggered the loading. Used to store error messages.
-     * @param fileName  The absolute path and file name of the tsconfig file.
-     */
-    load(event: DiscoverEvent, fileName: string) {
-        if (!FS.existsSync(fileName)) {
-            event.addError('The tsconfig file %s does not exist.', fileName);
             return;
         }
 
-        const { config } = ts.readConfigFile(fileName, ts.sys.readFile);
-        if (config === undefined) {
-            event.addError('The tsconfig file %s does not contain valid JSON.', fileName);
-            return;
-        }
-        if (!_.isPlainObject(config)) {
-            event.addError('The tsconfig file %s does not contain a JSON object.', fileName);
-            return;
-        }
+        fileToRead = normalizePath(resolve(fileToRead));
 
-        const { fileNames, options, raw: { typedocOptions }} = ts.parseJsonConfigFileContent(
-            config,
-            ts.sys,
-            Path.resolve(Path.dirname(fileName)),
+        let fatalError = false as boolean;
+        const parsed = ts.getParsedCommandLineOfConfigFile(
+            fileToRead,
             {},
-            Path.resolve(fileName));
+            {
+                ...ts.sys,
+                onUnRecoverableConfigFileDiagnostic(error) {
+                    logger.diagnostic(error);
+                    fatalError = true;
+                },
+            }
+        );
 
-        event.inputFiles = fileNames;
-
-        const ignored = TypeScriptSource.IGNORED;
-        for (const key of ignored) {
-            delete options[key];
+        if (!parsed || fatalError) {
+            return;
         }
 
-        _.defaults(event.data, typedocOptions, options);
+        logger.diagnostics(parsed.errors);
+
+        const typedocOptions = parsed.raw?.typedocOptions ?? {};
+        if (typedocOptions.options) {
+            logger.error(
+                [
+                    "typedocOptions in tsconfig file specifies an option file to read but the option",
+                    "file has already been read. This is likely a misconfiguration.",
+                ].join(" ")
+            );
+            delete typedocOptions.options;
+        }
+        if (typedocOptions.tsconfig) {
+            logger.error(
+                "typedocOptions in tsconfig file may not specify a tsconfig file to read"
+            );
+            delete typedocOptions.tsconfig;
+        }
+
+        container.setCompilerOptions(
+            parsed.fileNames,
+            parsed.options,
+            parsed.projectReferences
+        );
+        for (const [key, val] of Object.entries(typedocOptions || {})) {
+            try {
+                // We catch the error, so can ignore the strict type checks
+                container.setValue(key as never, val as never);
+            } catch (error) {
+                logger.error(error.message);
+            }
+        }
     }
 }

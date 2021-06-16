@@ -1,11 +1,33 @@
-import * as ts from 'typescript';
-import * as _ts from '../ts-internal';
-import * as FS from 'fs';
+import * as ts from "typescript";
+import * as FS from "fs";
+import { dirname } from "path";
+
+/**
+ * Get the longest directory path common to all files.
+ */
+export function getCommonDirectory(files: readonly string[]): string {
+    if (!files.length) {
+        return "";
+    }
+
+    const roots = files.map((f) => f.split(/\\|\//));
+    if (roots.length === 1) {
+        return roots[0].slice(0, -1).join("/");
+    }
+
+    let i = 0;
+
+    while (new Set(roots.map((part) => part[i])).size === 1) {
+        i++;
+    }
+
+    return roots[0].slice(0, i).join("/");
+}
 
 /**
  * List of known existent directories. Used to speed up [[directoryExists]].
  */
-const existingDirectories: ts.MapLike<boolean> = {};
+const existingDirectories = new Set<string>();
 
 /**
  * Normalize the given path.
@@ -14,7 +36,7 @@ const existingDirectories: ts.MapLike<boolean> = {};
  * @returns The normalized path.
  */
 export function normalizePath(path: string) {
-    return path.replace(/\\/g, '/');
+    return path.replace(/\\/g, "/");
 }
 
 /**
@@ -24,12 +46,12 @@ export function normalizePath(path: string) {
  * @returns TRUE if the given directory exists, FALSE otherwise.
  */
 export function directoryExists(directoryPath: string): boolean {
-    if (existingDirectories.hasOwnProperty(directoryPath)) {
+    if (existingDirectories.has(directoryPath)) {
         return true;
     }
 
     if (ts.sys.directoryExists(directoryPath)) {
-        existingDirectories[directoryPath] = true;
+        existingDirectories.add(directoryPath);
         return true;
     }
 
@@ -42,8 +64,8 @@ export function directoryExists(directoryPath: string): boolean {
  * @param directoryPath  The directory that should be validated.
  */
 export function ensureDirectoriesExist(directoryPath: string) {
-    if (directoryPath.length > _ts.getRootLength(directoryPath) && !directoryExists(directoryPath)) {
-        const parentDirectory = _ts.getDirectoryPath(directoryPath);
+    if (!directoryExists(directoryPath)) {
+        const parentDirectory = dirname(directoryPath);
         ensureDirectoriesExist(parentDirectory);
         ts.sys.createDirectory(directoryPath);
     }
@@ -59,9 +81,14 @@ export function ensureDirectoriesExist(directoryPath: string) {
  * @param writeByteOrderMark  Whether the UTF-8 BOM should be written or not.
  * @param onError  A callback that will be invoked if an error occurs.
  */
-export function writeFile(fileName: string, data: string, writeByteOrderMark: boolean, onError?: (message: string) => void) {
+export function writeFile(
+    fileName: string,
+    data: string,
+    writeByteOrderMark: boolean,
+    onError?: (message: string) => void
+) {
     try {
-        ensureDirectoriesExist(_ts.getDirectoryPath(normalizePath(fileName)));
+        ensureDirectoriesExist(dirname(normalizePath(fileName)));
         ts.sys.writeFile(fileName, data, writeByteOrderMark);
     } catch (e) {
         if (onError) {
@@ -79,28 +106,28 @@ export function writeFile(fileName: string, data: string, writeByteOrderMark: bo
 export function readFile(file: string): string {
     const buffer = FS.readFileSync(file);
     switch (buffer[0]) {
-        case 0xFE:
-            if (buffer[1] === 0xFF) {
+        case 0xfe:
+            if (buffer[1] === 0xff) {
                 let i = 0;
-                while ((i + 1) < buffer.length) {
+                while (i + 1 < buffer.length) {
                     const temp = buffer[i];
                     buffer[i] = buffer[i + 1];
                     buffer[i + 1] = temp;
                     i += 2;
                 }
-                return buffer.toString('ucs2', 2);
+                return buffer.toString("ucs2", 2);
             }
             break;
-        case 0xFF:
-            if (buffer[1] === 0xFE) {
-                return buffer.toString('ucs2', 2);
+        case 0xff:
+            if (buffer[1] === 0xfe) {
+                return buffer.toString("ucs2", 2);
             }
             break;
-        case 0xEF:
-            if (buffer[1] === 0xBB) {
-                return buffer.toString('utf8', 3);
+        case 0xef:
+            if (buffer[1] === 0xbb) {
+                return buffer.toString("utf8", 3);
             }
     }
 
-    return buffer.toString('utf8', 0);
+    return buffer.toString("utf8", 0);
 }

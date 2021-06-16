@@ -7,26 +7,28 @@
  * alter the generated output.
  */
 
-import * as Path from 'path';
-import * as FS from 'fs-extra';
-// tslint:disable-next-line:variable-name
-const ProgressBar = require('progress');
+import * as Path from "path";
+import * as FS from "fs-extra";
+// eslint-disable-next-line
+const ProgressBar = require("progress");
 
-import { Application } from '../application';
-import { Theme } from './theme';
-import { RendererEvent, PageEvent } from './events';
-import { ProjectReflection } from '../models/reflections/project';
-import { UrlMapping } from './models/UrlMapping';
-import { writeFile } from '../utils/fs';
-import { DefaultTheme } from './themes/DefaultTheme';
-import { RendererComponent } from './components';
-import { Component, ChildableComponent, Option } from '../utils/component';
-import { ParameterType } from '../utils/options/declaration';
+import { Application } from "../application";
+import { Theme } from "./theme";
+import { RendererEvent, PageEvent } from "./events";
+import { ProjectReflection } from "../models/reflections/project";
+import { UrlMapping } from "./models/UrlMapping";
+import { writeFile } from "../utils/fs";
+import { DefaultTheme } from "./themes/DefaultTheme";
+import { RendererComponent } from "./components";
+import { Component, ChildableComponent } from "../utils/component";
+import { BindOption } from "../utils";
+import { loadHighlighter } from "../utils/highlighter";
+import { Theme as ShikiTheme } from "shiki";
 
 /**
  * The renderer processes a [[ProjectReflection]] using a [[BaseTheme]] instance and writes
  * the emitted html documents to a output directory. You can specify which theme should be used
- * using the ```--theme <name>``` commandline argument.
+ * using the ```--theme <name>``` command line argument.
  *
  * Subclasses of [[BasePlugin]] that have registered themselves in the [[Renderer.PLUGIN_CLASSES]]
  * will be automatically initialized. Most of the core functionality is provided as separate plugins.
@@ -54,69 +56,36 @@ import { ParameterType } from '../utils/options/declaration';
  *    Triggered after the renderer has written all documents. The listener receives
  *    an instance of [[RendererEvent]].
  */
-@Component({name: 'renderer', internal: true, childClass: RendererComponent})
-export class Renderer extends ChildableComponent<Application, RendererComponent> {
+@Component({ name: "renderer", internal: true, childClass: RendererComponent })
+export class Renderer extends ChildableComponent<
+    Application,
+    RendererComponent
+> {
     /**
      * The theme that is used to render the documentation.
      */
     theme?: Theme;
 
-    @Option({
-        name: 'theme',
-        help: 'Specify the path to the theme that should be used or \'default\' or \'minimal\' to use built-in themes.',
-        type: ParameterType.String,
-        defaultValue: 'default'
-    })
+    @BindOption("theme")
     themeName!: string;
 
-    @Option({
-        name: 'disableOutputCheck',
-        help: 'Should TypeDoc disable the testing and cleaning of the output directory?',
-        type: ParameterType.Boolean
-    })
+    @BindOption("disableOutputCheck")
     disableOutputCheck!: boolean;
 
-    @Option({
-        name: 'gaID',
-        help: 'Set the Google Analytics tracking ID and activate tracking code.'
-    })
+    @BindOption("gaID")
     gaID!: string;
 
-    @Option({
-        name: 'gaSite',
-        help: 'Set the site name for Google Analytics. Defaults to `auto`.',
-        defaultValue: 'auto'
-    })
+    @BindOption("gaSite")
     gaSite!: string;
 
-    @Option({
-        name: 'hideGenerator',
-        help: 'Do not print the TypeDoc link at the end of the page.',
-        type: ParameterType.Boolean
-    })
+    @BindOption("hideGenerator")
     hideGenerator!: boolean;
 
-    @Option({
-        name: 'entryPoint',
-        help: 'Specifies the fully qualified name of the root symbol. Defaults to global namespace.',
-        type: ParameterType.String
-    })
-    entryPoint!: string;
-
-    @Option({
-        name: 'toc',
-        help: 'Specifies the top level table of contents.',
-        type: ParameterType.Array
-    })
+    @BindOption("toc")
     toc!: string[];
 
-    /**
-     * Create a new Renderer instance.
-     *
-     * @param application  The application this dispatcher is attached to.
-     */
-    initialize() {
-    }
+    @BindOption("highlightTheme")
+    highlightTheme!: ShikiTheme;
 
     /**
      * Render the given project reflection to the specified output directory.
@@ -124,18 +93,30 @@ export class Renderer extends ChildableComponent<Application, RendererComponent>
      * @param project  The project that should be rendered.
      * @param outputDirectory  The path of the directory the documentation should be rendered to.
      */
-    render(project: ProjectReflection, outputDirectory: string) {
-        if (!this.prepareTheme() || !this.prepareOutputDirectory(outputDirectory)) {
+    async render(
+        project: ProjectReflection,
+        outputDirectory: string
+    ): Promise<void> {
+        await loadHighlighter(this.highlightTheme);
+        if (
+            !this.prepareTheme() ||
+            !this.prepareOutputDirectory(outputDirectory)
+        ) {
             return;
         }
 
-        const output = new RendererEvent(RendererEvent.BEGIN, outputDirectory, project);
+        const output = new RendererEvent(
+            RendererEvent.BEGIN,
+            outputDirectory,
+            project
+        );
         output.settings = this.application.options.getRawValues();
         output.urls = this.theme!.getUrls(project);
 
-        const bar = new ProgressBar('Rendering [:bar] :percent', {
+        const bar = new ProgressBar("Rendering [:bar] :percent", {
+            stream: process.stdout,
             total: output.urls.length,
-            width: 40
+            width: 40,
         });
 
         this.trigger(output);
@@ -162,8 +143,15 @@ export class Renderer extends ChildableComponent<Application, RendererComponent>
         }
 
         // Theme must be set as this is only called in render, and render ensures theme is set.
-        page.template = page.template || this.theme!.resources.templates.getResource(page.templateName)!.getTemplate();
-        page.contents = page.template(page);
+        page.template =
+            page.template ||
+            this.theme!.resources.templates.getResource(
+                page.templateName
+            )!.getTemplate();
+        page.contents = page.template(page, {
+            allowProtoMethodsByDefault: true,
+            allowProtoPropertiesByDefault: true,
+        });
 
         this.trigger(PageEvent.END, page);
         if (page.isDefaultPrevented) {
@@ -173,7 +161,7 @@ export class Renderer extends ChildableComponent<Application, RendererComponent>
         try {
             writeFile(page.filename, page.contents, false);
         } catch (error) {
-            this.application.logger.error('Could not write %s', page.filename);
+            this.application.logger.error("Could not write %s", page.filename);
             return false;
         }
 
@@ -195,23 +183,37 @@ export class Renderer extends ChildableComponent<Application, RendererComponent>
             if (!FS.existsSync(path)) {
                 path = Path.join(Renderer.getThemeDirectory(), themeName);
                 if (!FS.existsSync(path)) {
-                    this.application.logger.error('The theme %s could not be found.', themeName);
+                    this.application.logger.error(
+                        "The theme %s could not be found.",
+                        themeName
+                    );
                     return false;
                 }
             }
 
-            const filename = Path.join(path, 'theme.js');
+            const filename = Path.join(path, "theme.js");
             if (!FS.existsSync(filename)) {
-                this.theme = this.addComponent('theme', new DefaultTheme(this, path));
+                this.theme = this.addComponent(
+                    "theme",
+                    new DefaultTheme(this, path)
+                );
             } else {
                 try {
-                    const themeClass = typeof require(filename) === 'function' ? require(filename) : require(filename).default;
+                    /* eslint-disable */
+                    const themeClass =
+                        typeof require(filename) === "function"
+                            ? require(filename)
+                            : require(filename).default;
+                    /* eslint-enable */
 
-                    this.theme = this.addComponent('theme', new (themeClass)(this, path));
+                    this.theme = this.addComponent(
+                        "theme",
+                        new themeClass(this, path)
+                    );
                 } catch (err) {
                     throw new Error(
                         `Exception while loading "${filename}". You must export a \`new Theme(renderer, basePath)\` compatible class.\n` +
-                        err
+                            err
                     );
                 }
             }
@@ -233,7 +235,8 @@ export class Renderer extends ChildableComponent<Application, RendererComponent>
             if (!FS.statSync(directory).isDirectory()) {
                 this.application.logger.error(
                     'The output target "%s" exists but it is not a directory.',
-                    directory);
+                    directory
+                );
                 return false;
             }
 
@@ -249,15 +252,18 @@ export class Renderer extends ChildableComponent<Application, RendererComponent>
             if (!this.theme!.isOutputDirectory(directory)) {
                 this.application.logger.error(
                     'The output directory "%s" exists but does not seem to be a documentation generated by TypeDoc.\n' +
-                    'Make sure this is the right target directory, delete the folder and rerun TypeDoc.',
-                    directory);
+                        "Make sure this is the right target directory, delete the folder and rerun TypeDoc.",
+                    directory
+                );
                 return false;
             }
 
             try {
                 FS.removeSync(directory);
             } catch (error) {
-                this.application.logger.warn('Could not empty the output directory.');
+                this.application.logger.warn(
+                    "Could not empty the output directory."
+                );
             }
         }
 
@@ -265,12 +271,23 @@ export class Renderer extends ChildableComponent<Application, RendererComponent>
             try {
                 FS.mkdirpSync(directory);
             } catch (error) {
-                this.application.logger.error('Could not create output directory %s', directory);
+                this.application.logger.error(
+                    "Could not create output directory %s",
+                    directory
+                );
                 return false;
             }
         }
 
         return true;
+    }
+
+    // This exists so that the resources can get the directory
+    // without importing this file. Normally, I'd just directly
+    // get the path, but typedoc-plugin-markdown overrides the
+    // static version, and I don't need to break that yet...
+    getDefaultTheme() {
+        return Renderer.getDefaultTheme();
     }
 
     /**
@@ -279,7 +296,7 @@ export class Renderer extends ChildableComponent<Application, RendererComponent>
      * @returns The path to the theme directory.
      */
     static getThemeDirectory(): string {
-        return Path.dirname(require.resolve('typedoc-default-themes'));
+        return Path.dirname(require.resolve("typedoc-default-themes"));
     }
 
     /**
@@ -288,8 +305,8 @@ export class Renderer extends ChildableComponent<Application, RendererComponent>
      * @returns The path to the default theme.
      */
     static getDefaultTheme(): string {
-        return Path.join(Renderer.getThemeDirectory(), 'default');
+        return Path.join(Renderer.getThemeDirectory(), "default");
     }
 }
 
-import './plugins';
+import "./plugins";

@@ -1,7 +1,6 @@
-import { Reflection } from '../reflections/abstract';
-import { ReflectionCategory } from '../ReflectionCategory';
-import { ReflectionGroup } from '../ReflectionGroup';
-import { SourceFile } from './file';
+import { Reflection } from "../reflections/abstract";
+import { ReflectionGroup } from "../ReflectionGroup";
+import { SourceFile } from "./file";
 
 /**
  * Exposes information about a directory containing source files.
@@ -19,11 +18,9 @@ export class SourceDirectory {
     /**
      * A list of all subdirectories.
      */
-    directories: {[name: string]: SourceDirectory} = {};
+    directories: { [name: string]: SourceDirectory } = {};
 
     groups?: ReflectionGroup[];
-
-    categories?: ReflectionCategory[];
 
     /**
      * A list of all files in this directory.
@@ -53,9 +50,9 @@ export class SourceDirectory {
      */
     constructor(name?: string, parent?: SourceDirectory) {
         if (name && parent) {
-            this.name    = name;
-            this.dirName = (parent.dirName ? parent.dirName + '/' : '') + name;
-            this.parent  = parent;
+            this.name = name;
+            this.dirName = (parent.dirName ? parent.dirName + "/" : "") + name;
+            this.parent = parent;
         }
     }
 
@@ -65,18 +62,15 @@ export class SourceDirectory {
      * @param indent  Used internally for indention.
      * @returns A string representing this directory and all of its children.
      */
-    toString(indent: string = '') {
+    toString(indent = "") {
         let res = indent + this.name;
 
-        for (let key in this.directories) {
-            if (!this.directories.hasOwnProperty(key)) {
-                continue;
-            }
-            res += '\n' + this.directories[key].toString(indent + '  ');
+        for (const dir of Object.values(this.directories)) {
+            res += "\n" + dir.toString(indent + "  ");
         }
 
         this.files.forEach((file) => {
-            res += '\n' + indent + '  ' + file.fileName;
+            res += "\n" + indent + "  " + file.fileName;
         });
 
         return res;
@@ -91,7 +85,7 @@ export class SourceDirectory {
     getAllReflections(): Reflection[] {
         const reflections: Reflection[] = [];
         this.files.forEach((file) => {
-            reflections.push.apply(reflections, file.reflections);
+            reflections.push(...file.reflections);
         });
 
         // reflections.sort(Factories.GroupHandler.sortCallback);

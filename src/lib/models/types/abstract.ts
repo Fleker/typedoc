@@ -4,11 +4,10 @@
  * Instances of this class are also used to represent the type `void`.
  */
 export abstract class Type {
-
     /**
      * The type name identifier.
      */
-    readonly type: string = 'void';
+    readonly type: string = "void";
 
     /**
      * Clone this type.
@@ -23,26 +22,15 @@ export abstract class Type {
      * @param type  The type that should be checked for equality.
      * @returns TRUE if the given type equals this type, FALSE otherwise.
      */
-    equals(type: Type): boolean {
+    equals(_type: Type): boolean {
         return false;
-    }
-
-    /**
-     * Return a raw object representation of this type.
-     * @deprecated Use serializers instead
-     */
-    toObject(): any {
-        let result: any = {};
-        result.type = this.type;
-
-        return result;
     }
 
     /**
      * Return a string representation of this type.
      */
     toString(): string {
-        return 'void';
+        return "void";
     }
 
     /**

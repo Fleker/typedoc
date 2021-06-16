@@ -6,11 +6,11 @@
 
 Example install
 
-```bash
+```text
 $ npm install examples --save-dev
 ```
 
-Example executable: ``examples``. 
+Example executable: `examples`.
 
 ## Usage
 
@@ -18,11 +18,29 @@ Example executable: ``examples``.
 
 Example usage.
 
-```bash
+```text
 $ examples --out path/to/documentation/ path/to/example/project/
 ```
 
 ### Arguments
 
-* `--example <project>`<br>
-  Example explanation.
+-   `--example <project>`<br>
+    Example explanation.
+
+## Example with Cyrillic
+
+### Пример API
+
+> Combined Latin and Cyrillic text
+
+### Только кириллица
+
+> Only Cyrillic text
+
+## Repeated Heading
+
+This is used to check the generated id. First instance.
+
+## Repeated Heading
+
+This is used to check the generated id. Second instance.

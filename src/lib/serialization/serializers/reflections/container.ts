@@ -1,35 +1,34 @@
-import { Component } from '../../../utils/component';
-import { ContainerReflection } from '../../../models';
+import { ContainerReflection } from "../../../models";
 
-import { ReflectionSerializerComponent } from '../../components';
-import { SourceReferenceWrapper } from '../models';
+import { ReflectionSerializerComponent } from "../../components";
+import { SourceReferenceWrapper } from "../models";
+import {
+    ContainerReflection as JSONContainerReflection,
+    Reflection as JSONReflection,
+} from "../../schema";
 
-@Component({name: 'serializer:container-reflection'})
 export class ContainerReflectionSerializer extends ReflectionSerializerComponent<ContainerReflection> {
-
-  supports(t: unknown) {
-    return t instanceof ContainerReflection;
-  }
-
-  toObject(container: ContainerReflection, obj?: any): any {
-    obj = obj || {};
-
-    if (container.groups && container.groups.length > 0) {
-      obj.groups = container.groups.map( group => this.owner.toObject(group) );
+    supports(t: unknown) {
+        return t instanceof ContainerReflection;
     }
 
-    if (container.sources && container.sources.length > 0) {
-      obj.sources = container.sources
-        .map( source => this.owner
-          .toObject(new SourceReferenceWrapper({
-            fileName: source.fileName,
-            line: source.line,
-            character: source.character
-          }))
-        );
+    /**
+     * Will be run after [[ReflectionSerializer]] so will be passed the result of that serialization.
+     * @param container
+     * @param obj
+     */
+    toObject(
+        container: ContainerReflection,
+        obj: JSONReflection
+    ): JSONContainerReflection {
+        return {
+            ...obj,
+            children: this.owner.toObject(container.children),
+            groups: this.owner.toObject(container.groups),
+            categories: this.owner.toObject(container.categories),
+            sources: this.owner.toObject(
+                container.sources?.map((s) => new SourceReferenceWrapper(s))
+            ),
+        };
     }
-
-    return obj;
-  }
-
 }

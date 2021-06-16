@@ -1,13 +1,25 @@
-import * as FS from 'fs-extra';
-import * as Path from 'path';
-import * as Marked from 'marked';
-import * as HighlightJS from 'highlight.js';
-import * as Handlebars from 'handlebars';
+import * as FS from "fs-extra";
+import * as Path from "path";
+import * as Marked from "marked";
+import * as Handlebars from "handlebars";
 
-import { Component, ContextAwareRendererComponent } from '../components';
-import { RendererEvent, MarkdownEvent } from '../events';
-import { Option } from '../../utils/component';
-import { ParameterHint } from '../../utils/options/declaration';
+import { Component, ContextAwareRendererComponent } from "../components";
+import { RendererEvent, MarkdownEvent } from "../events";
+import { BindOption, readFile } from "../../utils";
+import { highlight, isSupportedLanguage } from "../../utils/highlighter";
+import { Theme } from "shiki";
+
+const customMarkedRenderer = new Marked.Renderer();
+
+customMarkedRenderer.heading = (text, level, _, slugger) => {
+    const slug = slugger.slug(text);
+
+    return `
+<a href="#${slug}" id="${slug}" style="color: inherit; text-decoration: none;">
+  <h${level}>${text}</h${level}>
+</a>
+`;
+};
 
 /**
  * A plugin that exposes the markdown, compact and relativeURL helper to handlebars.
@@ -39,21 +51,16 @@ import { ParameterHint } from '../../utils/options/declaration';
  * {{#relativeURL url}}
  * ```
  */
-@Component({name: 'marked'})
+@Component({ name: "marked" })
 export class MarkedPlugin extends ContextAwareRendererComponent {
-    @Option({
-        name: 'includes',
-        help: 'Specifies the location to look for included documents (use [[include:FILENAME]] in comments).',
-        hint: ParameterHint.Directory
-    })
+    @BindOption("includes")
     includeSource!: string;
 
-    @Option({
-        name: 'media',
-        help: 'Specifies the location with media files that should be copied to the output directory.',
-        hint: ParameterHint.Directory
-    })
+    @BindOption("media")
     mediaSource!: string;
+
+    @BindOption("highlightTheme")
+    theme!: Theme;
 
     /**
      * The path referenced files are located in.
@@ -68,12 +75,15 @@ export class MarkedPlugin extends ContextAwareRendererComponent {
     /**
      * The pattern used to find references in markdown.
      */
-    private includePattern: RegExp = /\[\[include:([^\]]+?)\]\]/g;
+    private includePattern = /\[\[include:([^\]]+?)\]\]/g;
 
     /**
      * The pattern used to find media links.
      */
-    private mediaPattern: RegExp = /media:\/\/([^ "\)\]\}]+)/g;
+    private mediaPattern = /media:\/\/([^ ")\]}]+)/g;
+
+    private sources?: { fileName: string; line: number }[];
+    private outputFileName?: string;
 
     /**
      * Create a new MarkedPlugin instance.
@@ -82,33 +92,42 @@ export class MarkedPlugin extends ContextAwareRendererComponent {
         super.initialize();
         this.listenTo(this.owner, MarkdownEvent.PARSE, this.onParseMarkdown);
 
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
         const that = this;
-        Handlebars.registerHelper('markdown', function(arg: any) { return that.parseMarkdown(arg.fn(this), this); });
-        Handlebars.registerHelper('relativeURL', (url: string) => url ? this.getRelativeUrl(url) : url);
-
-        Marked.setOptions({
-            highlight: (text: any, lang: any) => this.getHighlighted(text, lang)
+        Handlebars.registerHelper("markdown", function (this: any, arg: any) {
+            const root = arg.data.root;
+            that.outputFileName = root.filename;
+            that.sources = root.model.sources;
+            return that.parseMarkdown(arg.fn(this), this);
         });
+        Handlebars.registerHelper("relativeURL", (url: string) =>
+            url ? this.getRelativeUrl(url) : url
+        );
     }
 
     /**
-     * Highlight the synatx of the given text using HighlightJS.
+     * Highlight the syntax of the given text using HighlightJS.
      *
-     * @param text  The text taht should be highlightes.
+     * @param text  The text that should be highlighted.
      * @param lang  The language that should be used to highlight the string.
      * @return A html string with syntax highlighting.
      */
     public getHighlighted(text: string, lang?: string): string {
-        try {
-            if (lang) {
-                return HighlightJS.highlight(lang, text).value;
-            } else {
-                return HighlightJS.highlightAuto(text).value;
-            }
-        } catch (error) {
-            this.application.logger.warn(error.message);
+        lang = lang || "typescript";
+        lang = lang.toLowerCase();
+        if (!isSupportedLanguage(lang)) {
+            // Extra newline because of the progress bar
+            this.application.logger.warn(`
+Unsupported highlight language "${lang}" will not be highlighted. Run typedoc --help for a list of supported languages.
+target code block :
+\t${text.split("\n").join("\n\t")}
+source files :${this.sources?.map((source) => `\n\t${source.fileName}`).join()}
+output file :
+\t${this.outputFileName}`);
             return text;
         }
+
+        return highlight(text, lang, this.theme);
     }
 
     /**
@@ -120,30 +139,47 @@ export class MarkedPlugin extends ContextAwareRendererComponent {
      */
     public parseMarkdown(text: string, context: any) {
         if (this.includes) {
-            text = text.replace(this.includePattern, (match: string, path: string) => {
+            text = text.replace(this.includePattern, (_match, path) => {
                 path = Path.join(this.includes!, path.trim());
                 if (FS.existsSync(path) && FS.statSync(path).isFile()) {
-                    const contents = FS.readFileSync(path, 'utf-8');
-                    if (path.substr(-4).toLocaleLowerCase() === '.hbs') {
+                    const contents = readFile(path);
+                    if (path.substr(-4).toLocaleLowerCase() === ".hbs") {
                         const template = Handlebars.compile(contents);
-                        return template(context);
+                        return template(context, {
+                            allowProtoMethodsByDefault: true,
+                            allowProtoPropertiesByDefault: true,
+                        });
                     } else {
                         return contents;
                     }
                 } else {
-                    return '';
+                    this.application.logger.warn(
+                        "Could not find file to include: " + path
+                    );
+                    return "";
                 }
             });
         }
 
         if (this.mediaDirectory) {
-            text = text.replace(this.mediaPattern, (match: string, path: string) => {
-                if (FS.existsSync(Path.join(this.mediaDirectory!, path))) {
-                    return this.getRelativeUrl('media') + '/' + path;
-                } else {
-                    return match;
+            text = text.replace(
+                this.mediaPattern,
+                (match: string, path: string) => {
+                    const fileName = Path.join(this.mediaDirectory!, path);
+
+                    if (
+                        FS.existsSync(fileName) &&
+                        FS.statSync(fileName).isFile()
+                    ) {
+                        return this.getRelativeUrl("media") + "/" + path;
+                    } else {
+                        this.application.logger.warn(
+                            "Could not find media file: " + fileName
+                        );
+                        return match;
+                    }
                 }
-            });
+            );
         }
 
         const event = new MarkdownEvent(MarkdownEvent.PARSE, text, text);
@@ -160,26 +196,63 @@ export class MarkedPlugin extends ContextAwareRendererComponent {
     protected onBeginRenderer(event: RendererEvent) {
         super.onBeginRenderer(event);
 
+        Marked.setOptions(this.createMarkedOptions());
+
         delete this.includes;
         if (this.includeSource) {
             const includes = Path.resolve(this.includeSource);
-            if (FS.existsSync(includes) && FS.statSync(includes).isDirectory()) {
+            if (
+                FS.existsSync(includes) &&
+                FS.statSync(includes).isDirectory()
+            ) {
                 this.includes = includes;
             } else {
-                this.application.logger.warn('Could not find provided includes directory: ' + includes);
+                this.application.logger.warn(
+                    "Could not find provided includes directory: " + includes
+                );
             }
         }
 
         if (this.mediaSource) {
             const media = Path.resolve(this.mediaSource);
             if (FS.existsSync(media) && FS.statSync(media).isDirectory()) {
-                this.mediaDirectory = Path.join(event.outputDirectory, 'media');
+                this.mediaDirectory = Path.join(event.outputDirectory, "media");
                 FS.copySync(media, this.mediaDirectory);
             } else {
                 this.mediaDirectory = undefined;
-                this.application.logger.warn('Could not find provided media directory: ' + media);
+                this.application.logger.warn(
+                    "Could not find provided media directory: " + media
+                );
             }
         }
+    }
+
+    /**
+     * Creates an object with options that are passed to the markdown parser.
+     *
+     * @returns The options object for the markdown parser.
+     */
+    private createMarkedOptions(): Marked.MarkedOptions {
+        const markedOptions = (this.application.options.getValue(
+            "markedOptions"
+        ) ?? {}) as Marked.MarkedOptions;
+
+        if (
+            typeof markedOptions === "object" &&
+            !Array.isArray(markedOptions)
+        ) {
+            // Set some default values if they are not specified via the TypeDoc option
+            markedOptions.highlight ??= (text: any, lang: any) =>
+                this.getHighlighted(text, lang);
+            markedOptions.renderer ??= customMarkedRenderer;
+            markedOptions.mangle ??= false; // See https://github.com/TypeStrong/typedoc/issues/1395
+
+            return markedOptions;
+        }
+
+        throw new Error(
+            "The value provided via the 'markedOptions' option must be a non-array object."
+        );
     }
 
     /**

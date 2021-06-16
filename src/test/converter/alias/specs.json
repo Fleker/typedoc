@@ -2,154 +2,190 @@
   "id": 0,
   "name": "typedoc",
   "kind": 0,
+  "kindString": "Project",
   "flags": {},
   "children": [
     {
-      "id": 1,
-      "name": "\"alias\"",
-      "kind": 1,
-      "kindString": "External module",
-      "flags": {
-        "isExported": true
+      "id": 8,
+      "name": "IsString",
+      "kind": 4194304,
+      "kindString": "Type alias",
+      "flags": {},
+      "comment": {
+        "shortText": "Conditional types from TS2.8"
       },
-      "originalName": "%BASE%/alias/alias.ts",
-      "children": [
+      "typeParameter": [
         {
+          "id": 9,
+          "name": "T",
+          "kind": 131072,
+          "kindString": "Type parameter",
+          "flags": {}
+        }
+      ],
+      "type": {
+        "type": "conditional",
+        "checkType": {
+          "type": "reference",
+          "name": "T"
+        },
+        "extendsType": {
+          "type": "intrinsic",
+          "name": "string"
+        },
+        "trueType": {
+          "type": "literal",
+          "value": "string"
+        },
+        "falseType": {
+          "type": "literal",
+          "value": "not string"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "name": "PromiseType",
+      "kind": 4194304,
+      "kindString": "Type alias",
+      "flags": {},
+      "comment": {
+        "shortText": "Extracts the type of a promise."
+      },
+      "typeParameter": [
+        {
+          "id": 11,
+          "name": "T",
+          "kind": 131072,
+          "kindString": "Type parameter",
+          "flags": {}
+        }
+      ],
+      "type": {
+        "type": "conditional",
+        "checkType": {
+          "type": "reference",
+          "name": "T"
+        },
+        "extendsType": {
+          "type": "reference",
+          "typeArguments": [
+            {
+              "type": "inferred",
+              "name": "U"
+            }
+          ],
+          "name": "PromiseLike"
+        },
+        "trueType": {
+          "type": "reference",
+          "name": "U"
+        },
+        "falseType": {
+          "type": "reference",
+          "name": "T"
+        }
+      }
+    },
+    {
+      "id": 1,
+      "name": "TCompareFunction",
+      "kind": 4194304,
+      "kindString": "Type alias",
+      "flags": {},
+      "comment": {
+        "shortText": "A type that describes a compare function, e.g. for array.sort()."
+      },
+      "typeParameter": [
+        {
+          "id": 6,
+          "name": "T",
+          "kind": 131072,
+          "kindString": "Type parameter",
+          "flags": {}
+        }
+      ],
+      "type": {
+        "type": "reflection",
+        "declaration": {
           "id": 2,
-          "name": "TCompareFunction",
-          "kind": 4194304,
-          "kindString": "Type alias",
+          "name": "__type",
+          "kind": 65536,
+          "kindString": "Type literal",
           "flags": {},
-          "comment": {
-            "shortText": "A type that describes a compare function, e.g. for array.sort()."
-          },
-          "typeParameter": [
+          "signatures": [
             {
               "id": 3,
-              "name": "T",
-              "kind": 131072,
-              "kindString": "Type parameter",
-              "flags": {}
-            }
-          ],
-          "sources": [
-            {
-              "fileName": "alias.ts",
-              "line": 4,
-              "character": 29
-            }
-          ],
-          "type": {
-            "type": "reflection",
-            "declaration": {
-              "id": 4,
               "name": "__type",
-              "kind": 65536,
-              "kindString": "Type literal",
+              "kind": 4096,
+              "kindString": "Call signature",
               "flags": {},
-              "signatures": [
+              "parameters": [
+                {
+                  "id": 4,
+                  "name": "a",
+                  "kind": 32768,
+                  "kindString": "Parameter",
+                  "flags": {},
+                  "type": {
+                    "type": "reference",
+                    "name": "T"
+                  }
+                },
                 {
                   "id": 5,
-                  "name": "__call",
-                  "kind": 4096,
-                  "kindString": "Call signature",
+                  "name": "b",
+                  "kind": 32768,
+                  "kindString": "Parameter",
                   "flags": {},
-                  "parameters": [
-                    {
-                      "id": 6,
-                      "name": "a",
-                      "kind": 32768,
-                      "kindString": "Parameter",
-                      "flags": {},
-                      "type": {
-                        "type": "typeParameter",
-                        "name": "T"
-                      }
-                    },
-                    {
-                      "id": 7,
-                      "name": "b",
-                      "kind": 32768,
-                      "kindString": "Parameter",
-                      "flags": {},
-                      "type": {
-                        "type": "typeParameter",
-                        "name": "T"
-                      }
-                    }
-                  ],
                   "type": {
-                    "type": "intrinsic",
-                    "name": "number"
+                    "type": "reference",
+                    "name": "T"
                   }
                 }
               ],
-              "sources": [
-                {
-                  "fileName": "alias.ts",
-                  "line": 4,
-                  "character": 34
-                }
-              ]
-            }
-          }
-        },
-        {
-          "id": 8,
-          "name": "TId",
-          "kind": 4194304,
-          "kindString": "Type alias",
-          "flags": {},
-          "comment": {
-            "shortText": "A type for IDs."
-          },
-          "sources": [
-            {
-              "fileName": "alias.ts",
-              "line": 9,
-              "character": 16
-            }
-          ],
-          "type": {
-            "type": "union",
-            "types": [
-              {
+              "type": {
                 "type": "intrinsic",
                 "name": "number"
-              },
-              {
-                "type": "intrinsic",
-                "name": "string"
               }
-            ]
-          }
-        }
-      ],
-      "groups": [
-        {
-          "title": "Type aliases",
-          "kind": 4194304,
-          "children": [
-            2,
-            8
+            }
           ]
         }
-      ],
-      "sources": [
-        {
-          "fileName": "alias.ts",
-          "line": 1,
-          "character": 0
-        }
-      ]
+      }
+    },
+    {
+      "id": 7,
+      "name": "TId",
+      "kind": 4194304,
+      "kindString": "Type alias",
+      "flags": {},
+      "comment": {
+        "shortText": "A type for IDs."
+      },
+      "type": {
+        "type": "union",
+        "types": [
+          {
+            "type": "intrinsic",
+            "name": "number"
+          },
+          {
+            "type": "intrinsic",
+            "name": "string"
+          }
+        ]
+      }
     }
   ],
   "groups": [
     {
-      "title": "External modules",
-      "kind": 1,
+      "title": "Type aliases",
+      "kind": 4194304,
       "children": [
-        1
+        8,
+        10,
+        1,
+        7
       ]
     }
   ]

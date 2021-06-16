@@ -1,25 +1,29 @@
-import * as Handlebars from 'handlebars';
+import * as Handlebars from "handlebars";
 
-import { readFile } from '../../../utils/fs';
-import { ResourceStack, Resource } from './stack';
+import { readFile } from "../../../utils/fs";
+import { ResourceStack, Resource } from "./stack";
 
-export class Template extends Resource {
-    private template?: HandlebarsTemplateDelegate;
+export class Template<T = any> extends Resource {
+    private template?: Handlebars.TemplateDelegate<T>;
 
-    getTemplate(): HandlebarsTemplateDelegate {
+    getTemplate(): Handlebars.TemplateDelegate<T> {
         if (!this.template) {
             const raw = readFile(this.fileName);
             this.template = Handlebars.compile(raw, {
-                preventIndent: true
+                preventIndent: true,
             });
         }
 
         return this.template;
     }
 
-    render(context: any, options?: any): string {
+    render(context: any, options?: Handlebars.RuntimeOptions): string {
         const template = this.getTemplate();
-        return template(context, options);
+        return template(context, {
+            ...options,
+            allowProtoMethodsByDefault: true,
+            allowProtoPropertiesByDefault: true,
+        });
     }
 }
 
@@ -38,8 +42,8 @@ export class PartialStack extends TemplateStack {
         }
         const resources = this.getAllResources();
 
-        for (let name in resources) {
-            if (this.registeredNames.indexOf(name) !== -1) {
+        for (const name in resources) {
+            if (this.registeredNames.includes(name)) {
                 continue;
             }
             this.registeredNames.push(name);
@@ -57,7 +61,7 @@ export class PartialStack extends TemplateStack {
             return false;
         }
 
-        for (let name of this.registeredNames) {
+        for (const name of this.registeredNames) {
             Handlebars.unregisterPartial(name);
         }
 

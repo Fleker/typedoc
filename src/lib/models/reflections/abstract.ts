@@ -1,7 +1,9 @@
-import { SourceReference } from '../sources/file';
-import { Type } from '../types/index';
-import { Comment } from '../comments/comment';
-import { TypeParameterReflection } from './type-parameter';
+import { SourceReference } from "../sources/file";
+import { Type } from "../types/index";
+import { Comment } from "../comments/comment";
+import { TypeParameterReflection } from "./type-parameter";
+import { splitUnquotedString } from "./utils";
+import { ProjectReflection } from "./project";
 
 /**
  * Holds all data models used by TypeDoc.
@@ -33,36 +35,71 @@ export function resetReflectionID() {
  * Defines the available reflection kinds.
  */
 export enum ReflectionKind {
-    Global = 0,
-    ExternalModule = 1,
-    Module = 2,
-    Enum = 4,
-    EnumMember = 16,
-    Variable = 32,
-    Function = 64,
-    Class = 128,
-    Interface = 256,
-    Constructor = 512,
-    Property = 1024,
-    Method = 2048,
-    CallSignature = 4096,
-    IndexSignature = 8192,
-    ConstructorSignature = 16384,
-    Parameter = 32768,
-    TypeLiteral = 65536,
-    TypeParameter = 131072,
-    Accessor = 262144,
-    GetSignature = 524288,
-    SetSignature = 1048576,
-    ObjectLiteral = 2097152,
-    TypeAlias = 4194304,
-    Event = 8388608,
+    Project = 0x0,
+    Module = 0x1,
+    Namespace = 0x2,
+    Enum = 0x4,
+    // what happened to 8?
+    EnumMember = 0x10,
+    Variable = 0x20,
+    Function = 0x40,
+    Class = 0x80,
+    Interface = 0x100,
+    Constructor = 0x200,
+    Property = 0x400,
+    Method = 0x800,
+    CallSignature = 0x1000,
+    IndexSignature = 0x2000,
+    ConstructorSignature = 0x4000,
+    Parameter = 0x8000,
+    TypeLiteral = 0x10000,
+    TypeParameter = 0x20000,
+    Accessor = 0x40000,
+    GetSignature = 0x80000,
+    SetSignature = 0x100000,
+    ObjectLiteral = 0x200000,
+    TypeAlias = 0x400000,
+    Event = 0x800000,
+    Reference = 0x1000000,
+}
 
-    ClassOrInterface = Class | Interface,
-    VariableOrProperty = Variable | Property,
-    FunctionOrMethod = ReflectionKind.Function | Method,
-    SomeSignature = CallSignature | IndexSignature | ConstructorSignature | GetSignature | SetSignature,
-    SomeModule = Module | ExternalModule
+export namespace ReflectionKind {
+    export const All = ReflectionKind.Reference * 2 - 1;
+
+    export const ClassOrInterface =
+        ReflectionKind.Class | ReflectionKind.Interface;
+    export const VariableOrProperty =
+        ReflectionKind.Variable | ReflectionKind.Property;
+    export const FunctionOrMethod =
+        ReflectionKind.Function | ReflectionKind.Method;
+    export const ClassMember =
+        ReflectionKind.Accessor |
+        ReflectionKind.Constructor |
+        ReflectionKind.Method |
+        ReflectionKind.Property |
+        ReflectionKind.Event;
+    export const SomeSignature =
+        ReflectionKind.CallSignature |
+        ReflectionKind.IndexSignature |
+        ReflectionKind.ConstructorSignature |
+        ReflectionKind.GetSignature |
+        ReflectionKind.SetSignature;
+    export const SomeModule = ReflectionKind.Namespace | ReflectionKind.Module;
+    export const SomeType =
+        ReflectionKind.Interface |
+        ReflectionKind.TypeLiteral |
+        ReflectionKind.TypeParameter |
+        ReflectionKind.TypeAlias;
+    export const SomeValue =
+        ReflectionKind.Variable |
+        ReflectionKind.Function |
+        ReflectionKind.ObjectLiteral;
+
+    /** @internal */
+    export const Inheritable =
+        ReflectionKind.Property |
+        ReflectionKind.Method |
+        ReflectionKind.Constructor;
 }
 
 export enum ReflectionFlag {
@@ -71,16 +108,15 @@ export enum ReflectionFlag {
     Protected = 2,
     Public = 4,
     Static = 8,
-    Exported = 16,
-    ExportAssignment = 32,
-    External = 64,
-    Optional = 128,
-    DefaultValue = 256,
-    Rest = 512,
-    ConstructorProperty = 1024,
-    Abstract = 2048,
-    Const = 4096,
-    Let = 8192
+    ExportAssignment = 16,
+    External = 32,
+    Optional = 64,
+    DefaultValue = 128,
+    Rest = 256,
+    Abstract = 512,
+    Const = 1024,
+    Let = 2048,
+    Readonly = 4096,
 }
 
 const relevantFlags: ReflectionFlag[] = [
@@ -93,7 +129,8 @@ const relevantFlags: ReflectionFlag[] = [
     ReflectionFlag.Rest,
     ReflectionFlag.Abstract,
     ReflectionFlag.Let,
-    ReflectionFlag.Const
+    ReflectionFlag.Const,
+    ReflectionFlag.Readonly,
 ];
 
 /**
@@ -135,13 +172,6 @@ export class ReflectionFlags extends Array<string> {
     }
 
     /**
-     * Is this member exported?
-     */
-    get isExported(): boolean {
-        return this.hasFlag(ReflectionFlag.Exported);
-    }
-
-    /**
      * Is this a declaration from an external document?
      */
     get isExternal(): boolean {
@@ -168,10 +198,6 @@ export class ReflectionFlags extends Array<string> {
         return this.hasFlag(ReflectionFlag.ExportAssignment);
     }
 
-    get isConstructorProperty(): boolean {
-        return this.hasFlag(ReflectionFlag.ConstructorProperty);
-    }
-
     get isAbstract(): boolean {
         return this.hasFlag(ReflectionFlag.Abstract);
     }
@@ -182,6 +208,10 @@ export class ReflectionFlags extends Array<string> {
 
     get isLet() {
         return this.hasFlag(ReflectionFlag.Let);
+    }
+
+    get isReadonly() {
+        return this.hasFlag(ReflectionFlag.Readonly);
     }
 
     setFlag(flag: ReflectionFlag, set: boolean) {
@@ -210,21 +240,28 @@ export class ReflectionFlags extends Array<string> {
             case ReflectionFlag.Const:
             case ReflectionFlag.Let:
                 this.setSingleFlag(flag, set);
-                this.setSingleFlag((ReflectionFlag.Let | ReflectionFlag.Const) ^ flag, !set);
+                this.setSingleFlag(
+                    (ReflectionFlag.Let | ReflectionFlag.Const) ^ flag,
+                    !set
+                );
+                break;
             default:
                 this.setSingleFlag(flag, set);
         }
     }
 
     private setSingleFlag(flag: ReflectionFlag, set: boolean) {
-        const name = ReflectionFlag[flag].replace(/(.)([A-Z])/g, (m, a, b) => a + ' ' + b.toLowerCase());
+        const name = ReflectionFlag[flag].replace(
+            /(.)([A-Z])/g,
+            (_m, a, b) => a + " " + b.toLowerCase()
+        );
         if (!set && this.hasFlag(flag)) {
-            if (relevantFlags.indexOf(flag) !== -1) {
+            if (relevantFlags.includes(flag)) {
                 this.splice(this.indexOf(name), 1);
             }
             this.flags ^= flag;
         } else if (set && !this.hasFlag(flag)) {
-            if (relevantFlags.indexOf(flag) !== -1) {
+            if (relevantFlags.includes(flag)) {
                 this.push(name);
             }
             this.flags |= flag;
@@ -252,11 +289,15 @@ export enum TraverseProperty {
     Signatures,
     IndexSignature,
     GetSignature,
-    SetSignature
+    SetSignature,
 }
 
 export interface TraverseCallback {
-    (reflection: Reflection, property: TraverseProperty): void;
+    /**
+     * May return false to bail out of any further iteration. To preserve backwards compatibility, if
+     * a function returns undefined, iteration must continue.
+     */
+    (reflection: Reflection, property: TraverseProperty): boolean | void;
 }
 
 /**
@@ -300,7 +341,7 @@ export abstract class Reflection {
     /**
      * The symbol name of this reflection.
      */
-    name = '';
+    name: string;
 
     /**
      * The original name of the TypeScript declaration.
@@ -314,6 +355,7 @@ export abstract class Reflection {
 
     /**
      * The human readable string representation of the kind of this reflection.
+     * Set during the resolution phase by GroupPlugin
      */
     kindString?: string;
 
@@ -384,11 +426,16 @@ export abstract class Reflection {
      * Create a new BaseReflection instance.
      */
     constructor(name: string, kind: ReflectionKind, parent?: Reflection) {
-        this.id     = REFLECTION_ID++;
+        this.id = REFLECTION_ID++;
         this.parent = parent;
-        this.name   = name;
+        this.name = name;
         this.originalName = name;
-        this.kind   = kind;
+        this.kind = kind;
+
+        // If our parent is external, we are too.
+        if (parent?.flags.isExternal) {
+            this.setFlag(ReflectionFlag.External);
+        }
     }
 
     /**
@@ -396,7 +443,7 @@ export abstract class Reflection {
      */
     kindOf(kind: ReflectionKind | ReflectionKind[]): boolean {
         const kindArray = Array.isArray(kind) ? kind : [kind];
-        return kindArray.some(kind => (this.kind & kind) !== 0);
+        return kindArray.some((kind) => (this.kind & kind) !== 0);
     }
 
     /**
@@ -407,7 +454,7 @@ export abstract class Reflection {
      * @param separator  Separator used to join the names of the reflections.
      * @returns The full name of this reflection.
      */
-    getFullName(separator: string = '.'): string {
+    getFullName(separator = "."): string {
         if (this.parent && !this.parent.isProject()) {
             return this.parent.getFullName(separator) + separator + this.name;
         } else {
@@ -418,7 +465,7 @@ export abstract class Reflection {
     /**
      * Set a flag on this reflection.
      */
-    setFlag(flag: ReflectionFlag, value: boolean = true) {
+    setFlag(flag: ReflectionFlag, value = true) {
         this.flags.setFlag(flag, value);
     }
 
@@ -427,22 +474,27 @@ export abstract class Reflection {
      */
     getAlias(): string {
         if (!this._alias) {
-            let alias = this.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-            if (alias === '') {
-                alias = 'reflection-' + this.id;
+            let alias = this.name.replace(/[^a-z0-9]/gi, "_").toLowerCase();
+            if (alias === "") {
+                alias = "reflection-" + this.id;
             }
 
-            let target = <Reflection> this;
-            while (target.parent && !target.parent.isProject() && !target.hasOwnDocument) {
+            let target = <Reflection>this;
+            while (
+                target.parent &&
+                !target.parent.isProject() &&
+                !target.hasOwnDocument
+            ) {
                 target = target.parent;
             }
 
             if (!target._aliases) {
                 target._aliases = [];
             }
-            let suffix = '', index = 0;
-            while (target._aliases.indexOf(alias + suffix) !== -1) {
-                suffix = '-' + (++index).toString();
+            let suffix = "",
+                index = 0;
+            while (target._aliases.includes(alias + suffix)) {
+                suffix = "-" + (++index).toString();
             }
 
             alias += suffix;
@@ -467,22 +519,15 @@ export abstract class Reflection {
     }
 
     /**
-     * @param name  The name of the child to look for. Might contain a hierarchy.
-     */
-    getChildByName(name: string): Reflection;
-
-    /**
-     * @param names  The name hierarchy of the child to look for.
-     */
-    getChildByName(names: string[]): Reflection;
-
-    /**
      * Return a child by its name.
      *
-     * @returns The found child or NULL.
+     * @param names The name hierarchy of the child to look for.
+     * @returns The found child or undefined.
      */
     getChildByName(arg: string | string[]): Reflection | undefined {
-        const names: string[] = Array.isArray(arg) ? arg : arg.split('.');
+        const names: string[] = Array.isArray(arg)
+            ? arg
+            : splitUnquotedString(arg, ".");
         const name = names[0];
         let result: Reflection | undefined;
 
@@ -490,9 +535,10 @@ export abstract class Reflection {
             if (child.name === name) {
                 if (names.length <= 1) {
                     result = child;
-                } else if (child) {
+                } else {
                     result = child.getChildByName(names.slice(1));
                 }
+                return false;
             }
         });
 
@@ -502,7 +548,7 @@ export abstract class Reflection {
     /**
      * Return whether this reflection is the root / project reflection.
      */
-    isProject(): boolean { // this is ProjectReflection
+    isProject(): this is ProjectReflection {
         return false;
     }
 
@@ -512,7 +558,9 @@ export abstract class Reflection {
      * @return The found reflection or null.
      */
     findReflectionByName(arg: string | string[]): Reflection | undefined {
-        const names: string[] = Array.isArray(arg) ? arg : arg.split('.');
+        const names: string[] = Array.isArray(arg)
+            ? arg
+            : splitUnquotedString(arg, ".");
 
         const reflection = this.getChildByName(names);
         if (reflection) {
@@ -530,73 +578,15 @@ export abstract class Reflection {
      *
      * @param callback  The callback function that should be applied for each child reflection.
      */
-    traverse(callback: TraverseCallback) { }
-
-    /**
-     * Return a raw object representation of this reflection.
-     * @deprecated Use serializers instead
-     */
-    toObject(): any {
-        const result: any = {
-            id:         this.id,
-            name:       this.name,
-            kind:       this.kind,
-            kindString: this.kindString,
-            flags:      {}
-        };
-
-        if (this.originalName !== this.name) {
-            result.originalName = this.originalName;
-        }
-
-        if (this.comment) {
-            result.comment = this.comment.toObject();
-        }
-
-        Object.getOwnPropertyNames(ReflectionFlags.prototype).forEach(name => {
-            const descriptor = Object.getOwnPropertyDescriptor(ReflectionFlags.prototype, name)!;
-            if (typeof descriptor.get === 'function' && this.flags[name] === true) {
-                result.flags[name] = true;
-            }
-        });
-
-        if (this.decorates) {
-            result.decorates = this.decorates.map((type) => type.toObject());
-        }
-
-        if (this.decorators) {
-            result.decorators = this.decorators.map((decorator) => {
-                const result: any = { name: decorator.name };
-                if (decorator.type) {
-                    result.type = decorator.type.toObject();
-                }
-                if (decorator.arguments) {
-                    result.arguments = decorator.arguments;
-                }
-                return result;
-            });
-        }
-
-        this.traverse((child, property) => {
-            if (property === TraverseProperty.TypeLiteral) {
-                return;
-            }
-            let name = TraverseProperty[property];
-            name = name.substr(0, 1).toLowerCase() + name.substr(1);
-            if (!result[name]) {
-                result[name] = [];
-            }
-            result[name].push(child.toObject());
-        });
-
-        return result;
+    traverse(_callback: TraverseCallback) {
+        // do nothing here, overridden by child classes
     }
 
     /**
      * Return a string representation of this reflection.
      */
     toString(): string {
-        return ReflectionKind[this.kind] + ' ' + this.name;
+        return ReflectionKind[this.kind] + " " + this.name;
     }
 
     /**
@@ -604,14 +594,14 @@ export abstract class Reflection {
      *
      * @param indent  Used internally to indent child reflections.
      */
-    toStringHierarchy(indent: string = '') {
+    toStringHierarchy(indent = "") {
         const lines = [indent + this.toString()];
 
-        indent += '  ';
-        this.traverse((child, property) => {
+        indent += "  ";
+        this.traverse((child) => {
             lines.push(child.toStringHierarchy(indent));
         });
 
-        return lines.join('\n');
+        return lines.join("\n");
     }
 }

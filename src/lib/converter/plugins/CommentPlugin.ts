@@ -1,85 +1,63 @@
-import * as ts from 'typescript';
+import * as ts from "typescript";
 
-import { Comment, CommentTag } from '../../models/comments/index';
-import { IntrinsicType } from '../../models/types/index';
-import { Reflection, ReflectionFlag, ReflectionKind, TraverseProperty,
-    TypeParameterReflection, DeclarationReflection, ProjectReflection,
-    SignatureReflection, ParameterReflection } from '../../models/reflections/index';
-import { Component, ConverterComponent } from '../components';
-import { parseComment, getRawComment } from '../factories/comment';
-import { Converter } from '../converter';
-import { Context } from '../context';
+import { Comment, CommentTag } from "../../models/comments/index";
+import {
+    Reflection,
+    ReflectionFlag,
+    ReflectionKind,
+    TypeParameterReflection,
+    DeclarationReflection,
+} from "../../models/reflections/index";
+import { Component, ConverterComponent } from "../components";
+import { parseComment, getRawComment } from "../factories/comment";
+import { Converter } from "../converter";
+import { Context } from "../context";
+import { partition, uniq } from "lodash";
+import { SourceReference } from "../../models";
+import { BindOption, filterMap, removeIfPresent } from "../../utils";
 
 /**
- * Structure used by [[ContainerCommentHandler]] to store discovered module comments.
+ * These tags are not useful to display in the generated documentation.
+ * They should be ignored when parsing comments. Any relevant type information
+ * (for JS users) will be consumed by TypeScript and need not be preserved
+ * in the comment.
+ *
+ * Note that param/arg/argument/return/returns are not present.
+ * These tags will have their type information stripped when parsing, but still
+ * provide useful information for documentation.
  */
-interface ModuleComment {
-    /**
-     * The module reflection this comment is targeting.
-     */
-    reflection: Reflection;
-
-    /**
-     * The full text of the best matched comment.
-     */
-    fullText: string;
-
-    /**
-     * Has the full text been marked as being preferred?
-     */
-    isPreferred: boolean;
-}
+const TAG_BLACKLIST = [
+    "augments",
+    "callback",
+    "class",
+    "constructor",
+    "enum",
+    "extends",
+    "this",
+    "type",
+    "typedef",
+];
 
 /**
- * A handler that parses javadoc comments and attaches [[Models.Comment]] instances to
+ * A handler that parses TypeDoc comments and attaches [[Comment]] instances to
  * the generated reflections.
  */
-@Component({name: 'comment'})
+@Component({ name: "comment" })
 export class CommentPlugin extends ConverterComponent {
-    /**
-     * List of discovered module comments.
-     * Defined in this.onBegin
-     */
-    private comments!: {[id: number]: ModuleComment};
-
-    /**
-     * List of hidden reflections.
-     */
-    private hidden?: Reflection[];
+    @BindOption("excludeTags")
+    excludeTags!: string[];
 
     /**
      * Create a new CommentPlugin instance.
      */
     initialize() {
         this.listenTo(this.owner, {
-            [Converter.EVENT_BEGIN]:                   this.onBegin,
-            [Converter.EVENT_CREATE_DECLARATION]:      this.onDeclaration,
-            [Converter.EVENT_CREATE_SIGNATURE]:        this.onDeclaration,
-            [Converter.EVENT_CREATE_TYPE_PARAMETER]:   this.onCreateTypeParameter,
-            [Converter.EVENT_FUNCTION_IMPLEMENTATION]: this.onFunctionImplementation,
-            [Converter.EVENT_RESOLVE_BEGIN]:           this.onBeginResolve,
-            [Converter.EVENT_RESOLVE]:                 this.onResolve
+            [Converter.EVENT_CREATE_DECLARATION]: this.onDeclaration,
+            [Converter.EVENT_CREATE_SIGNATURE]: this.onDeclaration,
+            [Converter.EVENT_CREATE_TYPE_PARAMETER]: this.onCreateTypeParameter,
+            [Converter.EVENT_RESOLVE_BEGIN]: this.onBeginResolve,
+            [Converter.EVENT_RESOLVE]: this.onResolve,
         });
-    }
-
-    private storeModuleComment(comment: string, reflection: Reflection) {
-        const isPreferred = (comment.toLowerCase().indexOf('@preferred') !== -1);
-
-        if (this.comments[reflection.id]) {
-            const info = this.comments[reflection.id];
-            if (!isPreferred && (info.isPreferred || info.fullText.length > comment.length)) {
-                return;
-            }
-
-            info.fullText    = comment;
-            info.isPreferred = isPreferred;
-        } else {
-            this.comments[reflection.id] = {
-                reflection:  reflection,
-                fullText:    comment,
-                isPreferred: isPreferred
-            };
-        }
     }
 
     /**
@@ -89,42 +67,49 @@ export class CommentPlugin extends ConverterComponent {
      * @param comment  The comment that should be searched for modifiers.
      */
     private applyModifiers(reflection: Reflection, comment: Comment) {
-        if (comment.hasTag('private')) {
+        if (comment.hasTag("private")) {
             reflection.setFlag(ReflectionFlag.Private);
-            CommentPlugin.removeTags(comment, 'private');
-        }
-
-        if (comment.hasTag('protected')) {
-            reflection.setFlag(ReflectionFlag.Protected);
-            CommentPlugin.removeTags(comment, 'protected');
-        }
-
-        if (comment.hasTag('public')) {
-            reflection.setFlag(ReflectionFlag.Public);
-            CommentPlugin.removeTags(comment, 'public');
-        }
-
-        if (comment.hasTag('event')) {
-            reflection.kind = ReflectionKind.Event;
-            // reflection.setFlag(ReflectionFlag.Event);
-            CommentPlugin.removeTags(comment, 'event');
-        }
-
-        if (comment.hasTag('hidden') || comment.hasTag('ignore')) {
-            if (!this.hidden) {
-                this.hidden = [];
+            if (reflection.kindOf(ReflectionKind.CallSignature)) {
+                reflection.parent?.setFlag(ReflectionFlag.Private);
             }
-            this.hidden.push(reflection);
+            comment.removeTags("private");
         }
-    }
 
-    /**
-     * Triggered when the converter begins converting a project.
-     *
-     * @param context  The context object describing the current state the converter is in.
-     */
-    private onBegin(context: Context) {
-        this.comments = {};
+        if (comment.hasTag("protected")) {
+            reflection.setFlag(ReflectionFlag.Protected);
+            if (reflection.kindOf(ReflectionKind.CallSignature)) {
+                reflection.parent?.setFlag(ReflectionFlag.Protected);
+            }
+            comment.removeTags("protected");
+        }
+
+        if (comment.hasTag("public")) {
+            reflection.setFlag(ReflectionFlag.Public);
+            if (reflection.kindOf(ReflectionKind.CallSignature)) {
+                reflection.parent?.setFlag(ReflectionFlag.Public);
+            }
+            comment.removeTags("public");
+        }
+
+        if (comment.hasTag("event")) {
+            if (reflection.kindOf(ReflectionKind.CallSignature)) {
+                if (reflection.parent) {
+                    reflection.parent.kind = ReflectionKind.Event;
+                }
+            }
+            reflection.kind = ReflectionKind.Event;
+            comment.removeTags("event");
+        }
+
+        if (
+            reflection.kindOf(
+                ReflectionKind.Module | ReflectionKind.Namespace
+            ) ||
+            reflection.kind === ReflectionKind.Project
+        ) {
+            comment.removeTags("module");
+            comment.removeTags("packagedocumentation");
+        }
     }
 
     /**
@@ -132,23 +117,34 @@ export class CommentPlugin extends ConverterComponent {
      *
      * @param context  The context object describing the current state the converter is in.
      * @param reflection  The reflection that is currently processed.
-     * @param node  The node that is currently processed if available.
      */
-    private onCreateTypeParameter(context: Context, reflection: TypeParameterReflection, node?: ts.Node) {
+    private onCreateTypeParameter(
+        _context: Context,
+        reflection: TypeParameterReflection,
+        node?: ts.Node
+    ) {
+        if (node && ts.isJSDocTemplateTag(node.parent)) {
+            if (node.parent.comment) {
+                reflection.comment = new Comment(node.parent.comment);
+            }
+        }
+
         const comment = reflection.parent && reflection.parent.comment;
         if (comment) {
-            let tag = comment.getTag('typeparam', reflection.name);
+            let tag = comment.getTag("typeparam", reflection.name);
             if (!tag) {
-                tag = comment.getTag('param', `<${reflection.name}>`);
+                tag = comment.getTag("template", reflection.name);
             }
             if (!tag) {
-                tag = comment.getTag('param', reflection.name);
+                tag = comment.getTag("param", `<${reflection.name}>`);
+            }
+            if (!tag) {
+                tag = comment.getTag("param", reflection.name);
             }
 
             if (tag) {
                 reflection.comment = new Comment(tag.text);
-                // comment.tags must be set if we found a tag.
-                comment.tags!.splice(comment.tags!.indexOf(tag), 1);
+                removeIfPresent(comment.tags, tag);
             }
         }
     }
@@ -162,43 +158,41 @@ export class CommentPlugin extends ConverterComponent {
      * @param reflection  The reflection that is currently processed.
      * @param node  The node that is currently processed if available.
      */
-    private onDeclaration(context: Context, reflection: Reflection, node?: ts.Node) {
-        if (!node) {
+    private onDeclaration(
+        context: Context,
+        reflection: Reflection,
+        node?: ts.Node
+    ) {
+        if (reflection.kindOf(ReflectionKind.FunctionOrMethod)) {
             return;
         }
-        const rawComment = getRawComment(node);
+
+        // Clean this up in 0.21. We should really accept a ts.Symbol so we don't need exportSymbol on Context
+        const exportNode = context.exportSymbol?.getDeclarations()?.[0];
+        let rawComment = exportNode && getRawComment(exportNode);
+        rawComment ??= node && getRawComment(node);
         if (!rawComment) {
             return;
         }
 
-        if (reflection.kindOf(ReflectionKind.FunctionOrMethod) || (reflection.kindOf(ReflectionKind.Event) && reflection['signatures'])) {
-            const comment = parseComment(rawComment, reflection.comment);
-            this.applyModifiers(reflection, comment);
-        } else if (reflection.kindOf(ReflectionKind.Module)) {
-            this.storeModuleComment(rawComment, reflection);
-        } else {
-            const comment = parseComment(rawComment, reflection.comment);
-            this.applyModifiers(reflection, comment);
-            reflection.comment = comment;
-        }
-    }
+        const comment = parseComment(rawComment, reflection.comment);
 
-    /**
-     * Triggered when the converter has found a function implementation.
-     *
-     * @param context  The context object describing the current state the converter is in.
-     * @param reflection  The reflection that is currently processed.
-     * @param node  The node that is currently processed if available.
-     */
-    private onFunctionImplementation(context: Context, reflection: Reflection, node?: ts.Node) {
-        if (!node) {
-            return;
+        if (reflection.kindOf(ReflectionKind.Module)) {
+            const tag = comment.getTag("module");
+            if (tag) {
+                // If no name is specified, this is a flag to mark a comment as a module comment
+                // and should not result in a reflection rename.
+                const newName = tag.text.trim();
+                if (newName.length) {
+                    reflection.name = newName;
+                }
+                removeIfPresent(comment.tags, tag);
+            }
         }
 
-        const comment = getRawComment(node);
-        if (comment) {
-            reflection.comment = parseComment(comment, reflection.comment);
-        }
+        this.applyModifiers(reflection, comment);
+        this.removeExcludedTags(comment);
+        reflection.comment = comment;
     }
 
     /**
@@ -207,25 +201,52 @@ export class CommentPlugin extends ConverterComponent {
      * @param context  The context object describing the current state the converter is in.
      */
     private onBeginResolve(context: Context) {
-        for (let id in this.comments) {
-            if (!this.comments.hasOwnProperty(id)) {
-                continue;
-            }
+        const excludeInternal = this.application.options.getValue(
+            "excludeInternal"
+        );
+        const excludePrivate = this.application.options.getValue(
+            "excludePrivate"
+        );
+        const excludeProtected = this.application.options.getValue(
+            "excludeProtected"
+        );
 
-            const info    = this.comments[id];
-            const comment = parseComment(info.fullText);
-            CommentPlugin.removeTags(comment, 'preferred');
+        const project = context.project;
+        const reflections = Object.values(project.reflections);
 
-            this.applyModifiers(info.reflection, comment);
-            info.reflection.comment = comment;
-        }
+        // Remove hidden reflections
+        const hidden = reflections.filter((reflection) =>
+            CommentPlugin.isHidden(
+                reflection,
+                excludeInternal,
+                excludePrivate,
+                excludeProtected
+            )
+        );
+        hidden.forEach((reflection) => project.removeReflection(reflection));
 
-        if (this.hidden) {
-            const project = context.project;
-            this.hidden.forEach((reflection) => {
-                CommentPlugin.removeReflection(project, reflection);
-            });
-        }
+        // remove functions with empty signatures after their signatures have been removed
+        const [allRemoved, someRemoved] = partition(
+            filterMap(hidden, (reflection) =>
+                reflection.parent?.kindOf(
+                    ReflectionKind.FunctionOrMethod | ReflectionKind.Constructor
+                )
+                    ? reflection.parent
+                    : void 0
+            ) as DeclarationReflection[],
+            (method) => method.signatures?.length === 0
+        );
+        allRemoved.forEach((reflection) =>
+            project.removeReflection(reflection)
+        );
+        someRemoved.forEach((reflection) => {
+            reflection.sources = uniq(
+                reflection.signatures!.reduce<SourceReference[]>(
+                    (c, s) => c.concat(s.sources || []),
+                    []
+                )
+            );
+        });
     }
 
     /**
@@ -240,7 +261,7 @@ export class CommentPlugin extends ConverterComponent {
      * @param context  The context object describing the current state the converter is in.
      * @param reflection  The reflection that is currently resolved.
      */
-    private onResolve(context: Context, reflection: DeclarationReflection) {
+    private onResolve(_context: Context, reflection: DeclarationReflection) {
         if (!(reflection instanceof DeclarationReflection)) {
             return;
         }
@@ -248,16 +269,16 @@ export class CommentPlugin extends ConverterComponent {
         const signatures = reflection.getAllSignatures();
         if (signatures.length) {
             const comment = reflection.comment;
-            if (comment && comment.hasTag('returns')) {
-                comment.returns = comment.getTag('returns')!.text;
-                CommentPlugin.removeTags(comment, 'returns');
+            if (comment && comment.hasTag("returns")) {
+                comment.returns = comment.getTag("returns")!.text;
+                comment.removeTags("returns");
             }
 
             signatures.forEach((signature) => {
                 let childComment = signature.comment;
-                if (childComment && childComment.hasTag('returns')) {
-                    childComment.returns = childComment.getTag('returns')!.text;
-                    CommentPlugin.removeTags(childComment, 'returns');
+                if (childComment && childComment.hasTag("returns")) {
+                    childComment.returns = childComment.getTag("returns")!.text;
+                    childComment.removeTags("returns");
                 }
 
                 if (comment) {
@@ -265,19 +286,22 @@ export class CommentPlugin extends ConverterComponent {
                         childComment = signature.comment = new Comment();
                     }
 
-                    childComment.shortText = childComment.shortText || comment.shortText;
-                    childComment.text      = childComment.text      || comment.text;
-                    childComment.returns   = childComment.returns   || comment.returns;
+                    childComment.shortText =
+                        childComment.shortText || comment.shortText;
+                    childComment.text = childComment.text || comment.text;
+                    childComment.returns =
+                        childComment.returns || comment.returns;
+                    childComment.tags = childComment.tags || comment.tags;
                 }
 
                 if (signature.parameters) {
                     signature.parameters.forEach((parameter) => {
                         let tag: CommentTag | undefined;
                         if (childComment) {
-                            tag = childComment.getTag('param', parameter.name);
+                            tag = childComment.getTag("param", parameter.name);
                         }
                         if (comment && !tag) {
-                            tag = comment.getTag('param', parameter.name);
+                            tag = comment.getTag("param", parameter.name);
                         }
                         if (tag) {
                             parameter.comment = new Comment(tag.text);
@@ -285,100 +309,57 @@ export class CommentPlugin extends ConverterComponent {
                     });
                 }
 
-                CommentPlugin.removeTags(childComment, 'param');
+                childComment?.removeTags("param");
             });
 
-            CommentPlugin.removeTags(comment, 'param');
+            comment?.removeTags("param");
+        }
+    }
+
+    private removeExcludedTags(comment: Comment) {
+        for (const tag of TAG_BLACKLIST) {
+            comment.removeTags(tag);
+        }
+        for (const tag of this.excludeTags) {
+            comment.removeTags(tag);
         }
     }
 
     /**
-     * Remove all tags with the given name from the given comment instance.
+     * Determines whether or not a reflection has been hidden
      *
-     * @param comment  The comment that should be modified.
-     * @param tagName  The name of the that that should be removed.
+     * @param reflection Reflection to check if hidden
      */
-    static removeTags(comment: Comment | undefined, tagName: string) {
-        if (!comment || !comment.tags) {
-            return;
+    private static isHidden(
+        reflection: Reflection,
+        excludeInternal: boolean,
+        excludePrivate: boolean,
+        excludeProtected: boolean
+    ) {
+        const comment = reflection.comment;
+
+        if (
+            reflection.flags.hasFlag(ReflectionFlag.Private) &&
+            excludePrivate
+        ) {
+            return true;
         }
 
-        let i = 0, c = comment.tags.length;
-        while (i < c) {
-            if (comment.tags[i].tagName === tagName) {
-                comment.tags.splice(i, 1);
-                c--;
-            } else {
-                i++;
-            }
+        if (
+            reflection.flags.hasFlag(ReflectionFlag.Protected) &&
+            excludeProtected
+        ) {
+            return true;
         }
-    }
 
-    /**
-     * Remove the given reflection from the project.
-     */
-    static removeReflection(project: ProjectReflection, reflection: Reflection) {
-        reflection.traverse((child) => CommentPlugin.removeReflection(project, child));
-
-        const parent = <DeclarationReflection> reflection.parent;
-        parent.traverse((child: Reflection, property: TraverseProperty) => {
-            if (child === reflection) {
-                switch (property) {
-                    case TraverseProperty.Children:
-                        if (parent.children) {
-                            const index = parent.children.indexOf(<DeclarationReflection> reflection);
-                            if (index !== -1) {
-                                parent.children.splice(index, 1);
-                            }
-                        }
-                        break;
-                    case TraverseProperty.GetSignature:
-                        delete parent.getSignature;
-                        break;
-                    case TraverseProperty.IndexSignature:
-                        delete parent.indexSignature;
-                        break;
-                    case TraverseProperty.Parameters:
-                        if ((<SignatureReflection> reflection.parent).parameters) {
-                            const index = (<SignatureReflection> reflection.parent).parameters!.indexOf(<ParameterReflection> reflection);
-                            if (index !== -1) {
-                                (<SignatureReflection> reflection.parent).parameters!.splice(index, 1);
-                            }
-                        }
-                        break;
-                    case TraverseProperty.SetSignature:
-                        delete parent.setSignature;
-                        break;
-                    case TraverseProperty.Signatures:
-                        if (parent.signatures) {
-                            const index = parent.signatures.indexOf(<SignatureReflection> reflection);
-                            if (index !== -1) {
-                                parent.signatures.splice(index, 1);
-                            }
-                        }
-                        break;
-                    case TraverseProperty.TypeLiteral:
-                        parent.type = new IntrinsicType('Object');
-                        break;
-                    case TraverseProperty.TypeParameter:
-                        if (parent.typeParameters) {
-                            const index = parent.typeParameters.indexOf(<TypeParameterReflection> reflection);
-                            if (index !== -1) {
-                                parent.typeParameters.splice(index, 1);
-                            }
-                        }
-                        break;
-                }
-            }
-        });
-
-        let id = reflection.id;
-        delete project.reflections[id];
-
-        for (let key in project.symbolMapping) {
-            if (project.symbolMapping.hasOwnProperty(key) && project.symbolMapping[key] === id) {
-                delete project.symbolMapping[key];
-            }
+        if (!comment) {
+            return false;
         }
+
+        return (
+            comment.hasTag("hidden") ||
+            comment.hasTag("ignore") ||
+            (comment.hasTag("internal") && excludeInternal)
+        );
     }
 }

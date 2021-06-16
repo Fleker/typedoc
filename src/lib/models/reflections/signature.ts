@@ -1,11 +1,39 @@
-import { Type, ReflectionType } from '../types/index';
-import { Reflection, TypeContainer, TypeParameterContainer, TraverseProperty, TraverseCallback } from './abstract';
-import { ContainerReflection } from './container';
-import { ParameterReflection } from './parameter';
-import { TypeParameterReflection } from './type-parameter';
+import { Type, ReflectionType, ReferenceType } from "../types/index";
+import {
+    Reflection,
+    TypeContainer,
+    TypeParameterContainer,
+    TraverseProperty,
+    TraverseCallback,
+    ReflectionKind,
+} from "./abstract";
+import { ParameterReflection } from "./parameter";
+import { TypeParameterReflection } from "./type-parameter";
+import { toArray } from "lodash";
+import type { DeclarationReflection } from "./declaration";
 
-export class SignatureReflection extends Reflection implements TypeContainer, TypeParameterContainer {
-    parent?: ContainerReflection;
+export class SignatureReflection
+    extends Reflection
+    implements TypeContainer, TypeParameterContainer {
+    /**
+     * Create a new SignatureReflection to contain a specific type of signature.
+     */
+    constructor(
+        name: string,
+        kind: SignatureReflection["kind"],
+        parent: DeclarationReflection
+    ) {
+        super(name, kind, parent);
+    }
+
+    kind!:
+        | ReflectionKind.SetSignature
+        | ReflectionKind.GetSignature
+        | ReflectionKind.IndexSignature
+        | ReflectionKind.CallSignature
+        | ReflectionKind.ConstructorSignature;
+
+    parent!: DeclarationReflection;
 
     parameters?: ParameterReflection[];
 
@@ -18,21 +46,21 @@ export class SignatureReflection extends Reflection implements TypeContainer, Ty
      *
      * Applies to interface and class members.
      */
-    overwrites?: Type;
+    overwrites?: ReferenceType;
 
     /**
      * A type that points to the reflection this reflection has been inherited from.
      *
      * Applies to interface and class members.
      */
-    inheritedFrom?: Type;
+    inheritedFrom?: ReferenceType;
 
     /**
      * A type that points to the reflection this reflection is the implementation of.
      *
      * Applies to class members.
      */
-    implementationOf?: Type;
+    implementationOf?: ReferenceType;
 
     /**
      * Return an array of the parameter types.
@@ -44,7 +72,9 @@ export class SignatureReflection extends Reflection implements TypeContainer, Ty
         function notUndefined<T>(t: T | undefined): t is T {
             return !!t;
         }
-        return this.parameters.map(parameter => parameter.type).filter(notUndefined);
+        return this.parameters
+            .map((parameter) => parameter.type)
+            .filter(notUndefined);
     }
 
     /**
@@ -57,44 +87,29 @@ export class SignatureReflection extends Reflection implements TypeContainer, Ty
      */
     traverse(callback: TraverseCallback) {
         if (this.type instanceof ReflectionType) {
-            callback(this.type.declaration, TraverseProperty.TypeLiteral);
+            if (
+                callback(
+                    this.type.declaration,
+                    TraverseProperty.TypeLiteral
+                ) === false
+            ) {
+                return;
+            }
         }
 
-        if (this.typeParameters) {
-            this.typeParameters.slice().forEach((parameter) => callback(parameter, TraverseProperty.TypeParameter));
+        for (const parameter of toArray(this.typeParameters)) {
+            if (callback(parameter, TraverseProperty.TypeParameter) === false) {
+                return;
+            }
         }
 
-        if (this.parameters) {
-            this.parameters.slice().forEach((parameter) => callback(parameter, TraverseProperty.Parameters));
+        for (const parameter of toArray(this.parameters)) {
+            if (callback(parameter, TraverseProperty.Parameters) === false) {
+                return;
+            }
         }
 
         super.traverse(callback);
-    }
-
-    /**
-     * Return a raw object representation of this reflection.
-     * @deprecated Use serializers instead
-     */
-    toObject(): any {
-        const result = super.toObject();
-
-        if (this.type) {
-            result.type = this.type.toObject();
-        }
-
-        if (this.overwrites) {
-            result.overwrites = this.overwrites.toObject();
-        }
-
-        if (this.inheritedFrom) {
-            result.inheritedFrom = this.inheritedFrom.toObject();
-        }
-
-        if (this.implementationOf) {
-            result.implementationOf = this.implementationOf.toObject();
-        }
-
-        return result;
     }
 
     /**
@@ -105,12 +120,14 @@ export class SignatureReflection extends Reflection implements TypeContainer, Ty
 
         if (this.typeParameters) {
             const parameters: string[] = [];
-            this.typeParameters.forEach((parameter) => parameters.push(parameter.name));
-            result += '<' + parameters.join(', ') + '>';
+            this.typeParameters.forEach((parameter) =>
+                parameters.push(parameter.name)
+            );
+            result += "<" + parameters.join(", ") + ">";
         }
 
         if (this.type) {
-            result += ':' + this.type.toString();
+            result += ":" + this.type.toString();
         }
 
         return result;

@@ -1,4 +1,5 @@
-import { Reflection, ReflectionKind } from './reflections/abstract';
+import { Reflection, ReflectionKind } from "./reflections/abstract";
+import { ReflectionCategory } from "./ReflectionCategory";
 
 /**
  * A group of reflections. All reflections in a group are of the same kind.
@@ -35,7 +36,7 @@ export class ReflectionGroup {
      * A bound representation of the ´ReflectionGroup.getAllChildrenHaveOwnDocument´
      * that can be used within templates.
      */
-    allChildrenHaveOwnDocument: Function;
+    allChildrenHaveOwnDocument = () => this.getAllChildrenHaveOwnDocument();
 
     /**
      * Are all children inherited members?
@@ -58,9 +59,9 @@ export class ReflectionGroup {
     allChildrenAreExternal?: boolean;
 
     /**
-     * Are any children exported declarations?
+     * Categories contained within this group.
      */
-    someChildrenAreExported?: boolean;
+    categories?: ReflectionCategory[];
 
     /**
      * Create a new ReflectionGroup instance.
@@ -71,41 +72,12 @@ export class ReflectionGroup {
     constructor(title: string, kind: ReflectionKind) {
         this.title = title;
         this.kind = kind;
-
-        this.allChildrenHaveOwnDocument = (() => this.getAllChildrenHaveOwnDocument());
     }
 
     /**
      * Do all children of this group have a separate document?
      */
     private getAllChildrenHaveOwnDocument(): boolean {
-        let onlyOwnDocuments = true;
-        this.children.forEach((child) => {
-            onlyOwnDocuments = onlyOwnDocuments && !!child.hasOwnDocument;
-        });
-
-        return onlyOwnDocuments;
-    }
-
-    /**
-     * Return a raw object representation of this reflection group.
-     * @deprecated Use serializers instead
-     */
-    toObject(): any {
-        const result = {
-            title: this.title,
-            kind:  this.kind
-        };
-
-        if (this.children) {
-            const children: any[] = [];
-            this.children.forEach((child) => {
-                children.push(child.id);
-            });
-
-            result['children'] = children;
-        }
-
-        return result;
+        return this.children.every((child) => child.hasOwnDocument);
     }
 }

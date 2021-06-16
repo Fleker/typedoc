@@ -1,5 +1,5 @@
-import { DeclarationReflection } from '../reflections/declaration';
-import { Type } from './abstract';
+import { DeclarationReflection } from "../reflections/declaration";
+import { Type } from "./abstract";
 
 /**
  * Represents a type which has it's own reflection like literal types.
@@ -17,7 +17,7 @@ export class ReflectionType extends Type {
     /**
      * The type name identifier.
      */
-    readonly type: string = 'reflection';
+    readonly type = "reflection";
 
     /**
      * Create a new instance of ReflectionType.
@@ -49,27 +49,13 @@ export class ReflectionType extends Type {
     }
 
     /**
-     * Return a raw object representation of this type.
-     * @deprecated Use serializers instead
-     */
-    toObject(): any {
-        const result: any = super.toObject();
-
-        if (this.declaration) {
-            result.declaration = this.declaration.toObject();
-        }
-
-        return result;
-    }
-
-    /**
      * Return a string representation of this type.
      */
     toString() {
         if (!this.declaration.children && this.declaration.signatures) {
-            return 'function';
+            return "function";
         } else {
-            return 'object';
+            return "object";
         }
     }
 }

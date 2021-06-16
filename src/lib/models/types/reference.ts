@@ -1,5 +1,7 @@
-import { Reflection } from '../reflections/abstract';
-import { Type } from './abstract';
+import type * as ts from "typescript";
+import type { ProjectReflection } from "../reflections";
+import { Reflection } from "../reflections/abstract";
+import { Type } from "./abstract";
 
 /**
  * Represents a type that refers to another reflection like a class, interface or enum.
@@ -12,7 +14,7 @@ export class ReferenceType extends Type {
     /**
      * The type name identifier.
      */
-    readonly type: string = 'reference';
+    readonly type = "reference";
 
     /**
      * The name of the referenced type.
@@ -28,42 +30,43 @@ export class ReferenceType extends Type {
     typeArguments?: Type[];
 
     /**
-     * The symbol id of the referenced type as returned from the TypeScript compiler.
-     *
-     * After the all reflections have been generated this is can be used to lookup the
-     * relevant reflection with [[ProjectReflection.symbolMapping]].
-     */
-    symbolID: number;
-
-    /**
      * The resolved reflection.
-     *
-     * The [[TypePlugin]] will try to set this property in the resolving phase.
      */
-    reflection?: Reflection;
+    get reflection() {
+        if (typeof this._target === "number") {
+            return this._project.getReflectionById(this._target);
+        }
+        const resolved = this._project.getReflectionFromSymbol(this._target);
+        if (resolved) this._target = resolved.id;
+        return resolved;
+    }
 
     /**
-     * Special symbol ID noting that the reference of a ReferenceType was known when creating the type.
+     * Horrible hacky solution to get around Handlebars messing with `this` in bad ways.
+     * Don't use this if possible, it will go away once we use something besides handlebars for themes.
      */
-    static SYMBOL_ID_RESOLVED = -1;
+    getReflection = () => this.reflection;
 
-    /**
-     * Special symbol ID noting that the reference should be resolved by the type name.
-     */
-    static SYMBOL_ID_RESOLVE_BY_NAME = -2;
+    private _target: ts.Symbol | number;
+    private _project: ProjectReflection;
 
     /**
      * Create a new instance of ReferenceType.
-     *
-     * @param name        The name of the referenced type.
-     * @param symbolID    The symbol id of the referenced type as returned from the TypeScript compiler.
-     * @param reflection  The resolved reflection if already known.
      */
-    constructor(name: string, symbolID: number, reflection?: Reflection) {
+    constructor(
+        name: string,
+        target: ts.Symbol | Reflection | number,
+        project: ProjectReflection
+    ) {
         super();
         this.name = name;
-        this.symbolID = symbolID;
-        this.reflection = reflection;
+        this._target = target instanceof Reflection ? target.id : target;
+        this._project = project;
+    }
+
+    /** @internal this is used for type parameters, which don't actually point to something */
+    static createBrokenReference(name: string, project: ProjectReflection) {
+        return new ReferenceType(name, -1, project);
     }
 
     /**
@@ -72,7 +75,7 @@ export class ReferenceType extends Type {
      * @return A clone of this type.
      */
     clone(): Type {
-        const clone = new ReferenceType(this.name, this.symbolID, this.reflection);
+        const clone = new ReferenceType(this.name, this._target, this._project);
         clone.typeArguments = this.typeArguments;
         return clone;
     }
@@ -80,31 +83,17 @@ export class ReferenceType extends Type {
     /**
      * Test whether this type equals the given type.
      *
-     * @param type  The type that should be checked for equality.
+     * @param other  The type that should be checked for equality.
      * @returns TRUE if the given type equals this type, FALSE otherwise.
      */
-    equals(type: ReferenceType): boolean {
-        return type instanceof ReferenceType &&
-            (type.symbolID === this.symbolID || type.reflection === this.reflection);
-    }
-
-    /**
-     * Return a raw object representation of this type.
-     * @deprecated Use serializers instead
-     */
-    toObject(): any {
-        const result: any = super.toObject();
-        result.name = this.name;
-
-        if (this.reflection) {
-            result.id = this.reflection.id;
+    equals(other: ReferenceType): boolean {
+        if (other instanceof ReferenceType) {
+            if (this.reflection != null) {
+                return this.reflection === other.reflection;
+            }
+            return this._target === other._target;
         }
-
-        if (this.typeArguments && this.typeArguments.length) {
-            result.typeArguments = this.typeArguments.map((t) => t.toObject());
-        }
-
-        return result;
+        return false;
     }
 
     /**
@@ -113,11 +102,14 @@ export class ReferenceType extends Type {
      */
     toString() {
         const name = this.reflection ? this.reflection.name : this.name;
-        let typeArgs = '';
-        if (this.typeArguments) {
-            typeArgs += '<';
-            typeArgs += this.typeArguments.map(arg => arg.toString()).join(', ');
-            typeArgs += '>';
+        let typeArgs = "";
+
+        if (this.typeArguments && this.typeArguments.length > 0) {
+            typeArgs += "<";
+            typeArgs += this.typeArguments
+                .map((arg) => arg.toString())
+                .join(", ");
+            typeArgs += ">";
         }
 
         return name + typeArgs;

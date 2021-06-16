@@ -1,4 +1,4 @@
-import { Reflection } from './reflections/abstract';
+import { Reflection } from "./reflections/abstract";
 
 /**
  * A category of reflections.
@@ -34,7 +34,8 @@ export class ReflectionCategory {
     constructor(title: string) {
         this.title = title;
 
-        this.allChildrenHaveOwnDocument = (() => this.getAllChildrenHaveOwnDocument());
+        this.allChildrenHaveOwnDocument = () =>
+            this.getAllChildrenHaveOwnDocument();
     }
 
     /**
@@ -47,26 +48,5 @@ export class ReflectionCategory {
         });
 
         return onlyOwnDocuments;
-    }
-
-    /**
-     * Return a raw object representation of this reflection category.
-     * @deprecated Use serializers instead
-     */
-    toObject(): any {
-        const result = {
-            title: this.title
-        };
-
-        if (this.children) {
-            const children: any[] = [];
-            this.children.forEach((child) => {
-                children.push(child.id);
-            });
-
-            result['children'] = children;
-        }
-
-        return result;
     }
 }
